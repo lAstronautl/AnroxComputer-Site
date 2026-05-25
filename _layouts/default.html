@@ -16,7 +16,18 @@ layout: compress
 <html lang="{{ page.lang | default: site.alt_lang | default: site.lang }}" {{ prefer_mode }}>
   {% include head.html lang=lang %}
 
-  <body>
+  {%- assign _rel = page.url | remove_first: site.baseurl -%}
+  {%- if _rel == '' -%}{%- assign _rel = '/' -%}{%- endif -%}
+  {%- assign _rel_last = _rel | slice: -1 -%}
+  {%- if _rel == '/' -%}
+    {%- assign _slug = 'index' -%}
+  {%- elsif _rel_last == '/' -%}
+    {%- assign _slug = _rel | remove_first: '/' | append: 'index' -%}
+  {%- else -%}
+    {%- assign _slug = _rel | remove_first: '/' -%}
+  {%- endif -%}
+
+  <body data-slug="{{ _slug }}">
     {% include sidebar.html lang=lang %}
 
     <div id="main-wrapper" class="d-flex justify-content-center">

@@ -3,6 +3,22 @@
 # Import the theme
 theme: jekyll-theme-chirpy
 
+# Graph View
+graph:
+  enabled: true
+  # render a local graph in post side panel
+  local_in_post: true
+  local_depth: 1
+  # include sources in index
+  # Only include posts that have `required_tag`
+  posts_only: true
+  required_tag: graph
+  include_pages: false
+  include_posts: true
+  include_tabs: false
+  # exclude by source-path prefix (optional)
+  exclude_paths: []
+
 # The language of the webpage › http://www.lingoes.net/en/translator/langcode.htm
 # If it has the same name as one of the files in folder `_data/locales`, the layout language will also be changed,
 # otherwise, the layout language will use the default value of 'en'.

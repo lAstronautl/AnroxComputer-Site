@@ -1,4 +1,5 @@
 import babel from '@rollup/plugin-babel';
+import commonjs from '@rollup/plugin-commonjs';
 import terser from '@rollup/plugin-terser';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import fs from 'fs';
@@ -36,7 +37,12 @@ function insertFrontmatter() {
 
 function build(
   filename,
-  { src = SRC_DEFAULT, jekyll = false, outputName = null } = {}
+  {
+    src = SRC_DEFAULT,
+    jekyll = false,
+    outputName = null,
+    inlineDynamicImports = false
+  } = {}
 ) {
   const input = `${src}/${filename}.js`;
   const shouldWatch = hasWatched ? false : true;
@@ -52,7 +58,8 @@ function build(
       format: 'iife',
       ...(outputName !== null && { name: outputName }),
       banner,
-      sourcemap: !isProd && !jekyll
+      sourcemap: !isProd && !jekyll,
+      ...(inlineDynamicImports && { inlineDynamicImports: true })
     },
     ...(shouldWatch && { watch: { include: `${SRC_DEFAULT}/**/*.js` } }),
     plugins: [
@@ -65,6 +72,7 @@ function build(
         ]
       }),
       nodeResolve(),
+      commonjs(),
       isProd && terser(),
       jekyll && insertFrontmatter()
     ]
@@ -77,6 +85,7 @@ export default [
   build('commons'),
   build('home'),
   build('categories'),
+  build('graph', { inlineDynamicImports: true }),
   build('page'),
   build('post'),
   build('misc'),

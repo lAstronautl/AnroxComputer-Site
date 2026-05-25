@@ -1,0 +1,188 @@
+@use '../abstracts/breakpoints' as bp;
+
+/* Quartz-like graph container styles */
+
+.graph {
+  > h3 {
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  > .graph-outer {
+    border-radius: 0.5rem;
+    border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.08));
+    box-sizing: border-box;
+    height: 250px;
+    margin: 0.5rem 0;
+    position: relative;
+    overflow: hidden;
+
+    > canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    > .graph-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    > .graph-settings-icon {
+      position: absolute;
+      top: 0.3rem;
+      right: 2.2rem;
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--text-color);
+      opacity: 0.7;
+      border-radius: 0.25rem;
+      z-index: 5;
+
+      &:hover {
+        opacity: 1;
+        background-color: var(--btn-hover-bg, rgba(0, 0, 0, 0.06));
+      }
+    }
+
+    > .graph-settings {
+      position: absolute;
+      top: 2.5rem;
+      right: 0.35rem;
+      z-index: 6;
+      width: 230px;
+      padding: 0.6rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
+      background-color: var(--main-bg);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+    }
+
+    .graph-settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin: 0.25rem 0;
+
+      label {
+        font-size: 0.85rem;
+        margin: 0;
+        white-space: nowrap;
+      }
+
+      input[type='number'] {
+        width: 98px;
+        padding: 0.15rem 0.35rem;
+        border-radius: 0.35rem;
+        border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.15));
+        background-color: var(--main-bg);
+        color: var(--text-color);
+      }
+
+      .graph-settings-check {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        justify-content: flex-start;
+      }
+    }
+
+    > .global-graph-icon {
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: var(--text-color);
+      opacity: 0.55;
+      width: 24px;
+      height: 24px;
+      position: absolute;
+      padding: 0.2rem;
+      margin: 0.3rem;
+      top: 0;
+      right: 0;
+      border-radius: 0.25rem;
+      background-color: transparent;
+      transition: background-color 0.2s ease;
+
+      &:hover {
+        background-color: var(--btn-hover-bg, rgba(0, 0, 0, 0.06));
+      }
+    }
+  }
+
+  > .global-graph-outer {
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100%;
+    backdrop-filter: blur(4px);
+    display: none;
+    overflow: hidden;
+
+    &.active {
+      display: inline-block;
+    }
+
+    > .global-graph-container {
+      border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
+      background-color: var(--main-bg);
+      border-radius: 0.5rem;
+      box-sizing: border-box;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      height: 80vh;
+      width: 80vw;
+
+      @include bp.lt(bp.get(lg)) {
+        width: 90vw;
+      }
+
+      > canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      > .graph-container {
+        width: 100%;
+        height: 100%;
+      }
+    }
+
+    > .graph-settings-icon--global {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      width: 34px;
+      height: 34px;
+      border: none;
+      background: var(--main-bg);
+      border-radius: 0.5rem;
+      border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
+      color: var(--text-color);
+      opacity: 0.85;
+      z-index: 10000;
+
+      &:hover {
+        opacity: 1;
+        background-color: var(--btn-hover-bg, rgba(0, 0, 0, 0.06));
+      }
+    }
+
+    > .graph-settings--global {
+      position: fixed;
+      top: 3.6rem;
+      right: 1rem;
+      z-index: 10000;
+      width: 230px;
+    }
+  }
+}
