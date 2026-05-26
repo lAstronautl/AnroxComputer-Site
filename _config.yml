@@ -37,9 +37,19 @@ url: "https://lastronautl.github.io"
 github:
   username: https://github.com/Dalexiandr/StarHorizonPublic
 
+# ↑ --------------------------
+# The end of `jekyll-seo-tag` settings
+
+# Web Analytics Settings
+analytics:
+  google:
+    id: # fill in your Google Analytics ID
+  goatcounter:
+    id: astronaut # fill in your GoatCounter ID
+
 # Page views settings
 pageviews:
-  provider: https://astronaut.goatcounter.com/count
+  provider: goatcounter
 
 # Prefer color scheme setting.
 #
