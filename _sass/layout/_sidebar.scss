@@ -57,8 +57,6 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
     display: block;
     width: 6.5rem;
     height: 6.5rem;
-    overflow: hidden;
-    box-shadow: var(--avatar-border-color) 0 0 0 2px;
     transform: translateZ(0); /* fixed the zoom in Safari */
 
     @include bp.sm {
@@ -100,7 +98,7 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
 
     font-family: inherit;
     font-weight: 900;
-    font-size: 1.75rem;
+    font-size: 1.45rem;
     line-height: 1.2;
     letter-spacing: 0.25px;
     margin-top: 1.25rem;
