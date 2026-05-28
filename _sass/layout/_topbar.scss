@@ -6,6 +6,7 @@
 #topbar-wrapper {
   height: v.$topbar-height;
   background-color: var(--topbar-bg);
+  border-radius: 10px; // Anco-Ui-Revork
 
   @include bp.lt(bp.get(lg)) {
     @include mx.slide(top 0.2s ease);

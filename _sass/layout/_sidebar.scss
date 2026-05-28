@@ -57,6 +57,8 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
     display: block;
     width: 6.5rem;
     height: 6.5rem;
+    // overflow: hidden; // Anco-Ui-Revork
+    // box-shadow: var(--avatar-border-color) 0 0 0 2px; // Anco-Ui-Revork
     transform: translateZ(0); /* fixed the zoom in Safari */
 
     @include bp.sm {
@@ -98,7 +100,7 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
 
     font-family: inherit;
     font-weight: 900;
-    font-size: 1.45rem;
+    font-size: 1.45rem; // Anco-Ui-Revork font-size: 1.75rem;
     line-height: 1.2;
     letter-spacing: 0.25px;
     margin-top: 1.25rem;
