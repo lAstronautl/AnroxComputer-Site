@@ -1,23 +1,14 @@
----
-layout: default
-panel_includes:
-  - graph-panel
----
-
-{% include lang.html %}
-
-<article class="px-1">
-  {% assign tab_key = page.title | downcase %}
-  {% assign title = site.data.locales[lang].tabs[tab_key] | default: page.title %}
-  <h1 class="dynamic-title">{{ title }}</h1>
-
+{% if site.graph and site.graph.enabled %}
   {% assign index_url = '/assets/graph/content-index.json' | relative_url %}
+
   {% assign global_cfg = site.graph.global_cfg
     | default: '{"drag":true,"zoom":true,"depth":-1,"scale":0.9,"repelForce":0.5,"centerForce":0.2,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":true,"enableRadial":true}'
   %}
 
-  <section class="graph mt-3">
-    <div class="graph-outer" style="height: 70vh;">
+  <section class="graph mt-4">
+    <h3>{{ site.graph.panel_title | default: 'Graph' }}</h3>
+
+    <div class="graph-outer" style="height: 250px;">
       <button class="graph-settings-icon" type="button" aria-label="Graph Settings">
         <i class="fas fa-gear"></i>
       </button>
@@ -54,10 +45,4 @@ panel_includes:
       <div class="graph-container" data-cfg='{{ global_cfg }}' data-index-url="{{ index_url }}"></div>
     </div>
   </section>
-
-  {% if content and content != empty %}
-    <div class="content mt-4">
-      {{ content }}
-    </div>
-  {% endif %}
-</article>
+{% endif %}
