@@ -3,6 +3,9 @@
 /* Quartz-like graph container styles */
 
 .graph {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+
   > h3 {
     font-size: 1rem;
     margin: 0;
@@ -10,7 +13,8 @@
 
   > .graph-outer {
     border-radius: 0.5rem;
-    border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.08));
+    border: 1px solid var(--graph-border-color, var(--main-border-color));
+    background-color: var(--graph-bg, var(--main-bg));
     box-sizing: border-box;
     height: 250px;
     margin: 0.5rem 0;
@@ -36,14 +40,14 @@
       height: 28px;
       border: none;
       background: transparent;
-      color: var(--text-color);
+      color: var(--graph-control-color, var(--text-color));
       opacity: 0.7;
       border-radius: 0.25rem;
       z-index: 5;
 
       &:hover {
         opacity: 1;
-        background-color: var(--btn-hover-bg, rgba(0, 0, 0, 0.06));
+        background-color: var(--graph-control-hover-bg, var(--btn-hover-bg, rgba(0, 0, 0, 0.06)));
       }
     }
 
@@ -55,9 +59,9 @@
       width: 230px;
       padding: 0.6rem;
       border-radius: 0.5rem;
-      border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
-      background-color: var(--main-bg);
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+      border: 1px solid var(--graph-border-color, var(--main-border-color));
+      background-color: var(--graph-settings-bg, var(--main-bg));
+      box-shadow: var(--graph-settings-shadow, 0 8px 30px rgba(0, 0, 0, 0.18));
     }
 
     .graph-settings-row {
@@ -77,9 +81,9 @@
         width: 98px;
         padding: 0.15rem 0.35rem;
         border-radius: 0.35rem;
-        border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.15));
-        background-color: var(--main-bg);
-        color: var(--text-color);
+        border: 1px solid var(--graph-border-color, var(--main-border-color));
+        background-color: var(--graph-settings-bg, var(--main-bg));
+        color: var(--graph-control-color, var(--text-color));
       }
 
       .graph-settings-check {
@@ -95,7 +99,7 @@
       cursor: pointer;
       background: none;
       border: none;
-      color: var(--text-color);
+      color: var(--graph-control-color, var(--text-color));
       opacity: 0.55;
       width: 24px;
       height: 24px;
@@ -109,7 +113,7 @@
       transition: background-color 0.2s ease;
 
       &:hover {
-        background-color: var(--btn-hover-bg, rgba(0, 0, 0, 0.06));
+        background-color: var(--graph-control-hover-bg, var(--btn-hover-bg, rgba(0, 0, 0, 0.06)));
       }
     }
   }
@@ -130,8 +134,8 @@
     }
 
     > .global-graph-container {
-      border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
-      background-color: var(--main-bg);
+      border: 1px solid var(--graph-border-color, var(--main-border-color));
+      background-color: var(--graph-bg, var(--main-bg));
       border-radius: 0.5rem;
       box-sizing: border-box;
       position: fixed;
@@ -164,16 +168,16 @@
       width: 34px;
       height: 34px;
       border: none;
-      background: var(--main-bg);
+      background: var(--graph-settings-bg, var(--main-bg));
       border-radius: 0.5rem;
-      border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
-      color: var(--text-color);
+      border: 1px solid var(--graph-border-color, var(--main-border-color));
+      color: var(--graph-control-color, var(--text-color));
       opacity: 0.85;
       z-index: 10000;
 
       &:hover {
         opacity: 1;
-        background-color: var(--btn-hover-bg, rgba(0, 0, 0, 0.06));
+        background-color: var(--graph-control-hover-bg, var(--btn-hover-bg, rgba(0, 0, 0, 0.06)));
       }
     }
 

@@ -161,24 +161,24 @@ async function renderGraph(graph, fullSlug) {
     return getComputedStyle(document.documentElement).getPropertyValue(name);
   }
 
-  // Quartz uses these CSS variables. Chirpy doesn't define them, so we provide
-  // safe fallbacks and/or map to Chirpy's variables when available.
+  // Graph colors are controlled by theme variables in `_sass/themes`.
   const computedStyleMap = {
-    '--secondary': resolveCssColor(cssVar('--secondary'), resolveCssColor(cssVar('--link-color'), '#0d6efd')),
-    '--tertiary': resolveCssColor(cssVar('--tertiary'), '#6c757d'),
-    '--gray': resolveCssColor(cssVar('--gray'), '#6c757d'),
-    '--light': resolveCssColor(cssVar('--light'), resolveCssColor(cssVar('--main-bg'), '#ffffff')),
-    '--lightgray': resolveCssColor(cssVar('--lightgray'), 'rgba(0,0,0,0.18)'),
-    '--dark': resolveCssColor(cssVar('--dark'), resolveCssColor(cssVar('--text-color'), '#2b2d31')),
-    '--darkgray': resolveCssColor(cssVar('--darkgray'), 'rgba(0,0,0,0.55)'),
+    '--graph-node-current': resolveCssColor(cssVar('--graph-node-current'), resolveCssColor(cssVar('--link-color'), '#0d6efd')),
+    '--graph-node-visited': resolveCssColor(cssVar('--graph-node-visited'), '#6c757d'),
+    '--graph-node-default': resolveCssColor(cssVar('--graph-node-default'), '#6c757d'),
+    '--graph-node-tag': resolveCssColor(cssVar('--graph-node-tag'), '#c2c6cc'),
+    '--graph-link-color': resolveCssColor(cssVar('--graph-link-color'), 'rgba(0,0,0,0.18)'),
+    '--graph-link-active-color': resolveCssColor(cssVar('--graph-link-active-color'), '#6c757d'),
+    '--graph-label-color': resolveCssColor(cssVar('--graph-label-color'), resolveCssColor(cssVar('--text-color'), '#2b2d31')),
     '--bodyFont': (cssVar('--bodyFont') ?? '').toString().trim() || 'system-ui'
   };
 
   const color = (d) => {
     const isCurrent = d.id === slug;
-    if (isCurrent) return computedStyleMap['--secondary'];
+    if (isCurrent) return computedStyleMap['--graph-node-current'];
+    if (d.id.startsWith('tags/')) return computedStyleMap['--graph-node-tag'];
     const isVisited = visited.has(d.id);
-    return isVisited ? computedStyleMap['--tertiary'] : computedStyleMap['--gray'];
+    return isVisited ? computedStyleMap['--graph-node-visited'] : computedStyleMap['--graph-node-default'];
   };
 
   function nodeRadius(d) {
@@ -222,7 +222,7 @@ async function renderGraph(graph, fullSlug) {
       anchor: { x: 0.5, y: 1.2 },
       style: {
         fontSize: fontSize * 15,
-        fill: computedStyleMap['--dark'],
+        fill: computedStyleMap['--graph-label-color'],
         fontFamily: computedStyleMap['--bodyFont']
       },
       resolution: window.devicePixelRatio * 4
@@ -269,7 +269,7 @@ async function renderGraph(graph, fullSlug) {
     linkContainer.addChild(gfx);
     linkRenderData.push({
       gfx,
-      color: computedStyleMap['--lightgray'],
+      color: computedStyleMap['--graph-link-color'],
       alpha: 1,
       active: false,
       simulationData: l
@@ -317,7 +317,7 @@ async function renderGraph(graph, fullSlug) {
       let alpha = 1;
       if (hoveredNodeId) alpha = l.active ? 1 : 0.2;
 
-      l.color = l.active ? computedStyleMap['--gray'] : computedStyleMap['--lightgray'];
+      l.color = l.active ? computedStyleMap['--graph-link-active-color'] : computedStyleMap['--graph-link-color'];
       tweenGroup.add(new Tweened(l).to({ alpha }, 200));
     }
 

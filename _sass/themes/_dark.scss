@@ -24,7 +24,7 @@
   --checkbox-color: #42464b;
   --checkbox-checked-color: var(--link-color);
 
-  --img-bg: radial-gradient(circle, #111111 0%, #1e2124 100%);
+  --img-bg: radial-gradient(circle, #111111 0%, #0d0d0d 100%);
 
   --shimmer-bg: linear-gradient(
     90deg,
@@ -61,6 +61,21 @@
   --toc-highlight: #f05a5a;
   --toc-popup-border-color: #2b2f35;
   --tag-hover: #620505;
+
+  /* Graph */
+  --graph-bg: var(--main-bg);
+  --graph-border-color: #2b2f35;
+  --graph-control-color: #f05a5a;
+  --graph-control-hover-bg: #620505;
+  --graph-settings-bg: #0d0d0d;
+  --graph-settings-shadow: rgb(0 0 0 / 45%) 0 8px 30px;
+  --graph-node-current: #f05a5a;
+  --graph-node-visited: #d21e1e;
+  --graph-node-default: #9e0000;
+  --graph-node-tag: #42464b;
+  --graph-link-color: rgb(240 90 90 / 28%);
+  --graph-link-active-color: #d21e1e;
+  --graph-label-color: #ffffff;
 
   --tb-odd-bg: #1e2124;
   --tb-even-bg: #161718;

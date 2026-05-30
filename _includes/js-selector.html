@@ -64,6 +64,10 @@
 
 <script defer src="{{ script | relative_url }}"></script>
 
+{% if page.layout == 'post' and site.graph and site.graph.enabled and site.graph.local_in_post %}
+  <script defer src="{{ '/assets/js/dist/graph.min.js' | relative_url }}"></script>
+{% endif %}
+
 {% if page.math %}
   <!-- MathJax -->
   <script src="{{ '/assets/js/data/mathjax.js' | relative_url }}"></script>

@@ -71,6 +71,11 @@ theme_mode: dark
 # e.g. 'https://cdn.com'
 cdn: "https://cdn.jsdelivr.net/gh/lAstronautl/AnroxComputers-CDN"
 
+wiki_links:
+  # Folders on the CDN to try for ![[image.png]] embeds.
+  cdn_image_dirs:
+    - image
+
 # the avatar on sidebar, support local or CORS resources
 avatar: "/logo/icon-724x724.png"
 
