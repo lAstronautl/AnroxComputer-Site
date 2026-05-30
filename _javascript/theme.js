@@ -17,6 +17,10 @@ class Theme {
     return 'light';
   }
 
+  static get ANCO() {
+    return 'anco';
+  }
+
   /**
    * @returns {string} Theme mode identifier
    */
@@ -46,7 +50,7 @@ class Theme {
   }
 
   static get #isDarkMode() {
-    return this.#mode === this.DARK;
+    return this.#mode === this.DARK || this.#mode === this.ANCO;
   }
 
   static get #hasMode() {
@@ -66,7 +70,8 @@ class Theme {
   static getThemeMapper(light, dark) {
     return {
       [this.LIGHT]: light,
-      [this.DARK]: dark
+      [this.DARK]: dark,
+      [this.ANCO]: dark
     };
   }
 

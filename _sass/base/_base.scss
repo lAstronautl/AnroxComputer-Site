@@ -4,6 +4,7 @@
 @use '../abstracts/placeholders';
 @use '../themes/light';
 @use '../themes/dark';
+@use '../themes/anco';
 
 :root {
   font-size: 16px;
@@ -19,6 +20,10 @@ html {
     &[data-mode='dark'] {
       @include dark.styles;
     }
+
+    &[data-mode='anco'] {
+      @include anco.styles;
+    }
   }
 
   @media (prefers-color-scheme: dark) {
@@ -29,6 +34,10 @@ html {
 
     &[data-mode='light'] {
       @include light.styles;
+    }
+
+    &[data-mode='anco'] {
+      @include anco.styles;
     }
   }
 
