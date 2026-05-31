@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
+require "json"
+
 # Convert wiki-style links such as [[Post Title]] into Markdown links and
 # image embeds such as ![[image.png]] into Markdown images.
 module WikiLinks
   DATE_PREFIX = /\A\d{2,4}-\d{1,2}-\d{1,2}-/
   IMAGE_EXT = /\.(?:avif|gif|jpe?g|png|svg|webp)\z/i
+  CANVAS_EXT = /\.canvas\z/i
   WIKI_IMAGE = /!\[\[([^\]\n]+)\]\]/
   WIKI_LINK = /(?<!!)\[\[([^\]\n]+)\]\]/
 
@@ -47,6 +50,29 @@ module WikiLinks
     end
   end
 
+  def canvas_index(site)
+    @canvas_indexes ||= {}
+    @canvas_indexes[site.source] ||= begin
+      files = Dir.glob(File.join(site.source, "**", "*.canvas")).select do |path|
+        File.file?(path)
+      end
+
+      source = site.source.tr("\\", "/")
+
+      files.each_with_object({}) do |path, index|
+        relative_path = path.tr("\\", "/").sub(%r!\A#{Regexp.escape(source)}/!, "")
+        next if relative_path.start_with?("_site/", ".git/")
+
+        basename = File.basename(relative_path)
+        title = File.basename(relative_path, ".canvas")
+
+        index[normalize_path(relative_path)] ||= relative_path
+        index[normalize_path(basename)] ||= relative_path
+        index[normalize(title)] ||= relative_path
+      end
+    end
+  end
+
   def markdown_link(site, text, post)
     url = [site.config["baseurl"], post.url].join.sub(%r!//+!, "/")
     "[#{text}](#{url})"
@@ -62,6 +88,50 @@ module WikiLinks
     return "![#{alt}](#{sources.first})" if sources.one?
 
     html_image(alt, sources)
+  end
+
+  def canvas_embed(site, target)
+    relative_path = canvas_source(site, target)
+    return unless relative_path
+
+    full_path = File.join(site.source, relative_path)
+    data = JSON.parse(File.read(full_path, encoding: "UTF-8"))
+    title = File.basename(relative_path, ".canvas")
+    escaped_title = escape_html(title)
+    json = json_for_script(data)
+    baseurl = escape_html(site.config["baseurl"].to_s)
+
+    <<~HTML
+
+      <div class="obsidian-canvas-embed">
+        <div class="obsidian-canvas-embed-title">#{escaped_title}</div>
+        <div class="obsidian-canvas" data-baseurl="#{baseurl}">
+          <script type="application/json" class="obsidian-canvas-data">#{json}</script>
+          <div class="obsidian-canvas-toolbar" aria-label="Canvas controls">
+            <button type="button" data-canvas-action="zoom-out" aria-label="Zoom out"><i class="fas fa-minus"></i></button>
+            <button type="button" data-canvas-action="reset" aria-label="Reset view"><i class="fas fa-expand"></i></button>
+            <button type="button" data-canvas-action="zoom-in" aria-label="Zoom in"><i class="fas fa-plus"></i></button>
+          </div>
+          <div class="obsidian-canvas-stage">
+            <svg class="obsidian-canvas-edges" aria-hidden="true"></svg>
+            <div class="obsidian-canvas-nodes"></div>
+          </div>
+        </div>
+      </div>
+
+    HTML
+  rescue JSON::ParserError => e
+    Jekyll.logger.warn "WikiLinks:", "Skipping canvas embed #{target}: #{e.message}"
+    nil
+  end
+
+  def canvas_source(site, target)
+    target = target.strip
+    return unless target.match?(CANVAS_EXT)
+
+    canvas_index(site)[normalize_path(target)] ||
+      canvas_index(site)[normalize_path(File.basename(target))] ||
+      canvas_index(site)[normalize(File.basename(target, ".canvas"))]
   end
 
   def local_image_source(site, target)
@@ -114,6 +184,12 @@ module WikiLinks
       .gsub("<", "&lt;")
       .gsub(">", "&gt;")
   end
+
+  def json_for_script(value)
+    JSON.generate(value)
+      .gsub("</", "<\\/")
+      .gsub("<!--", "<\\!--")
+  end
 end
 
 Jekyll::Hooks.register [:posts, :pages, :documents], :pre_render do |doc|
@@ -129,6 +205,9 @@ Jekyll::Hooks.register [:posts, :pages, :documents], :pre_render do |doc|
 
   doc.content = doc.content.gsub(WikiLinks::WIKI_LINK) do
     text = Regexp.last_match(1).strip
+    canvas = WikiLinks.canvas_embed(doc.site, text)
+    next canvas if canvas
+
     post = index[WikiLinks.normalize(text)]
 
     post ? WikiLinks.markdown_link(doc.site, text, post) : Regexp.last_match(0)

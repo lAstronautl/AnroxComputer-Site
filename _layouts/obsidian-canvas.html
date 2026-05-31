@@ -1,0 +1,31 @@
+---
+layout: default
+---
+
+<article class="px-1">
+  <h1 class="dynamic-title">{{ page.title }}</h1>
+
+  <div class="obsidian-canvas" data-baseurl="{{ site.baseurl }}">
+    <script type="application/json" class="obsidian-canvas-data">
+      {{ page.canvas_data | jsonify }}
+    </script>
+
+    <div class="obsidian-canvas-toolbar" aria-label="Canvas controls">
+      <button type="button" data-canvas-action="zoom-out" aria-label="Zoom out">
+        <i class="fas fa-minus"></i>
+      </button>
+      <button type="button" data-canvas-action="reset" aria-label="Reset view">
+        <i class="fas fa-expand"></i>
+      </button>
+      <button type="button" data-canvas-action="zoom-in" aria-label="Zoom in">
+        <i class="fas fa-plus"></i>
+      </button>
+    </div>
+
+    <div class="obsidian-canvas-stage">
+      <svg class="obsidian-canvas-edges" aria-hidden="true"></svg>
+      <div class="obsidian-canvas-nodes"></div>
+    </div>
+  </div>
+</article>
+
