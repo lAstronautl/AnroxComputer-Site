@@ -8,6 +8,7 @@ tags: [typography, graph]
 pin: true
 math: true
 mermaid: true
+hidden: true
 image:
   path: /commons/devices-mockup.png
   preview: false
