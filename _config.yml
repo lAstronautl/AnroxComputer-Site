@@ -77,11 +77,11 @@ wiki_links:
     - image
 
 # the avatar on sidebar, support local or CORS resources
-avatar: "/logo/icon-724x724.png"
+avatar: "/image/Anrox_logo_724x724.png"
 
 # The URL of the site-wide social preview image used in SEO `og:image` meta tag.
 # It can be overridden by a customized `page.image` in front matter.
-social_preview_image: /logo/icon.png
+social_preview_image: /image/Anrox_Logo.png
 
 # boolean type, the global switch for TOC in posts.
 toc: true
@@ -183,4 +183,3 @@ jekyll-archives:
   permalinks:
     tag: /tags/:name/
     category: /categories/:name/
-
