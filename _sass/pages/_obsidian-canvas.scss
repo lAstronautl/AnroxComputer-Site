@@ -3,10 +3,10 @@
   height: min(74vh, 760px);
   min-height: 520px;
   overflow: hidden;
-  border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--main-border-color, rgb(0 0 0 / 12%));
   border-radius: 0.5rem;
   background:
-    radial-gradient(circle at 1px 1px, rgba(125, 125, 125, 0.18) 1px, transparent 0) 0 0 / 24px 24px,
+    radial-gradient(circle at 1px 1px, rgb(125 125 125 / 18%) 1px, transparent 0) 0 0 / 24px 24px,
     var(--main-bg);
   cursor: grab;
   touch-action: none;
@@ -34,10 +34,10 @@
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem;
-  border: 1px solid var(--main-border-color, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--main-border-color, rgb(0 0 0 / 12%));
   border-radius: 0.5rem;
   background: var(--main-bg);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
 }
 
 .obsidian-canvas-toolbar button {
@@ -50,7 +50,7 @@
 }
 
 .obsidian-canvas-toolbar button:hover {
-  background: var(--btn-hover-bg, rgba(0, 0, 0, 0.08));
+  background: var(--btn-hover-bg, rgb(0 0 0 / 8%));
 }
 
 .obsidian-canvas-stage {
@@ -69,7 +69,7 @@
 
 .obsidian-canvas-edge {
   fill: none;
-  stroke: var(--text-muted-color, rgba(100, 100, 100, 0.55));
+  stroke: var(--text-muted-color, rgb(100 100 100 / 55%));
   stroke-width: 2;
   stroke-linecap: round;
 }
@@ -93,7 +93,7 @@
   line-height: 1.25;
   text-align: center;
   white-space: pre-wrap;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
 }
 
 .obsidian-canvas-node--file {
