@@ -1,0 +1,55 @@
+@use '../abstracts/breakpoints' as bp;
+@use '../abstracts/variables' as v;
+
+html,
+body.editor-window-body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body[data-slug='editor'] {
+  .editor-shell {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100vh;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    box-sizing: border-box;
+  }
+
+  .editor-note {
+    margin-bottom: 0;
+    color: var(--text-muted-color);
+    flex: 0 0 auto;
+  }
+
+  .editor-frame {
+    overflow: hidden;
+    border: 1px solid var(--main-border-color);
+    border-radius: 0.75rem;
+    background: var(--card-bg);
+    box-shadow: var(--card-shadow);
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    width: 100%;
+  }
+
+  .editor-frame iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
+  }
+
+  @include bp.lt(bp.get(md)) {
+    .editor-frame {
+      border-radius: 0.5rem;
+    }
+  }
+}
