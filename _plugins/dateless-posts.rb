@@ -8,16 +8,15 @@ module Jekyll
       read_content(dir, "_posts", Document::DATELESS_FILENAME_MATCHER)
         .tap { |docs| docs.each(&:read) }
         .tap { |docs| docs.each { |doc| set_dateless_post_date(doc) } }
-        .select { |doc| processable?(doc) }
+        .select { |doc| processable?(doc) && doc.extname != ".canvas" }
     end
 
     private
 
     def set_dateless_post_date(doc)
       return if doc.relative_path.match?(Document::DATE_FILENAME_MATCHER)
-      return if doc.data.key?("date")
 
-      doc.data["date"] = doc.source_file_mtime
+      doc.data["date"] = doc.data.fetch("date", doc.source_file_mtime)
     end
   end
 end
