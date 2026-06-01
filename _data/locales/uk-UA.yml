@@ -27,20 +27,20 @@ panel:
   trending_tags: Популярні теги
   toc: Зміст
 
-copyright:
-  # Shown at the bottom of the post
-  license:
-    template: Публікація захищена ліцензією :LICENSE_NAME.
-    name: CC BY 4.0
-    link: https://creativecommons.org/licenses/by/4.0/
+# copyright:
+#   # Shown at the bottom of the post
+#   license:
+#     template: Публікація захищена ліцензією :LICENSE_NAME.
+#     name: CC BY 4.0
+#     link: https://creativecommons.org/licenses/by/4.0/
 
-  # Displayed in the footer
-  brief: Деякі права захищено.
-  verbose: >-
-    Публікації на сайті захищено ліцензією Creative Commons Attribution 4.0 International (CC BY 4.0),
-    якщо інше не вказано в тексті.
+#   # Displayed in the footer
+#   brief: Деякі права захищено.
+#   verbose: >-
+#     Публікації на сайті захищено ліцензією Creative Commons Attribution 4.0 International (CC BY 4.0),
+#     якщо інше не вказано в тексті.
 
-meta: Powered by :PLATFORM with :THEME theme
+# meta: Powered by :PLATFORM with :THEME theme
 
 not_found:
   statement: Вибачте, це посилання вказує на ресурс, що не існує.
