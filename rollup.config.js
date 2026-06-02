@@ -86,6 +86,7 @@ export default [
   build('home'),
   build('categories'),
   build('graph', { inlineDynamicImports: true }),
+  build('obsidian-canvas'),
   build('page'),
   build('post'),
   build('misc'),

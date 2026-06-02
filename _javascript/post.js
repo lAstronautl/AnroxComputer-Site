@@ -8,6 +8,7 @@ import {
   initToc,
   loadMermaid
 } from './modules/components';
+import { initObsidianCanvas } from './modules/obsidian-canvas';
 
 loadImg();
 initToc();
@@ -17,4 +18,5 @@ initLocaleDatetime();
 initClipboard();
 initTopbar();
 loadMermaid();
+initObsidianCanvas();
 basic();

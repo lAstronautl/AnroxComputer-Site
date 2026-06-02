@@ -101,10 +101,13 @@
         }
       }
     }
-    // Anco-Ui-Revork Start
-    &:hover {
-      box-shadow: var(--card-hover-shadow);
-    } // Anco-Ui-Revork End
+
+     // Anco-Ui-Revork Start
+     &:hover {
+       box-shadow: var(--card-hover-shadow);
+     }
+
+     @extend %clickable-transition; // Anco-Ui-Revork End
   }
 } /* #post-list */
 

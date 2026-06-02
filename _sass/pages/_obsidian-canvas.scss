@@ -1,0 +1,124 @@
+.obsidian-canvas {
+  position: relative;
+  height: min(74vh, 760px);
+  min-height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--main-border-color, rgb(0 0 0 / 12%));
+  border-radius: 0.5rem;
+  background:
+    radial-gradient(circle at 1px 1px, rgb(125 125 125 / 18%) 1px, transparent 0) 0 0 / 24px 24px,
+    var(--main-bg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.obsidian-canvas-embed {
+  margin: 1.5rem 0;
+}
+
+.obsidian-canvas-embed-title {
+  margin-bottom: 0.45rem;
+  color: var(--text-muted-color);
+  font-size: 0.9rem;
+}
+
+.obsidian-canvas:active {
+  cursor: grabbing;
+}
+
+.obsidian-canvas-toolbar {
+  position: absolute;
+  z-index: 5;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--main-border-color, rgb(0 0 0 / 12%));
+  border-radius: 0.5rem;
+  background: var(--main-bg);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
+}
+
+.obsidian-canvas-toolbar button {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text-color);
+}
+
+.obsidian-canvas-toolbar button:hover {
+  background: var(--btn-hover-bg, rgb(0 0 0 / 8%));
+}
+
+.obsidian-canvas-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.obsidian-canvas-edges,
+.obsidian-canvas-nodes {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.obsidian-canvas-edge {
+  fill: none;
+  stroke: var(--text-muted-color, rgb(100 100 100 / 55%));
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.obsidian-canvas-node {
+  --canvas-node-bg: var(--main-bg);
+  --canvas-node-accent: var(--link-color, #2f70b7);
+
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0.65rem 0.85rem;
+  overflow: hidden;
+  border: 2px solid var(--canvas-node-accent);
+  border-radius: 0.45rem;
+  background: var(--canvas-node-bg);
+  color: var(--text-color);
+  font-size: 0.95rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-wrap;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+
+.obsidian-canvas-node--file {
+  padding: 0;
+  background: var(--main-bg);
+}
+
+.obsidian-canvas-node--file img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.obsidian-canvas-node--file.is-missing-file {
+  padding: 0.35rem;
+  border-style: dashed;
+  color: var(--text-muted-color);
+  font-size: 0.7rem;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .obsidian-canvas {
+    height: 68vh;
+    min-height: 420px;
+  }
+}

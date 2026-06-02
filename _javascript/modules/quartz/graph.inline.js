@@ -26,6 +26,69 @@ function addToVisited(slug) {
   localStorage.setItem(localStorageKey, JSON.stringify([...visited]));
 }
 
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function measureLayoutSize(graph) {
+  const rect = graph.getBoundingClientRect();
+  const width = graph.clientWidth || graph.offsetWidth || rect.width || graph.parentElement?.clientWidth || 0;
+  const height = graph.clientHeight || graph.offsetHeight || rect.height || graph.parentElement?.clientHeight || 0;
+  return { width, height };
+}
+
+async function waitForLayoutSize(graph) {
+  const initial = measureLayoutSize(graph);
+  if (initial.width > 0 && initial.height > 0) {
+    return initial;
+  }
+
+  if (typeof ResizeObserver === 'undefined') {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const next = measureLayoutSize(graph);
+      if (next.width > 0 && next.height > 0) return next;
+      await nextFrame();
+    }
+
+    return {
+      width: Math.max(measureLayoutSize(graph).width, 1),
+      height: Math.max(measureLayoutSize(graph).height, 250)
+    };
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let observer = null;
+
+    const finish = (size) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      resolve(size);
+    };
+
+    const check = () => {
+      if (!graph.isConnected) {
+        finish({
+          width: Math.max(measureLayoutSize(graph).width, 1),
+          height: Math.max(measureLayoutSize(graph).height, 250)
+        });
+        return;
+      }
+
+      const size = measureLayoutSize(graph);
+      if (size.width > 0 && size.height > 0) {
+        finish(size);
+      }
+    };
+
+    observer = new ResizeObserver(() => check());
+    observer.observe(graph);
+    if (graph.parentElement) observer.observe(graph.parentElement);
+    nextFrame().then(check);
+  });
+}
+
 async function renderGraph(graph, fullSlug) {
   const slug = simplifySlug(fullSlug);
   const visited = getVisited();
@@ -123,9 +186,7 @@ async function renderGraph(graph, fullSlug) {
       }))
   };
 
-  const width = graph.clientWidth || graph.offsetWidth;
-  const containerHeight = graph.clientHeight || graph.offsetHeight || graph.parentElement?.clientHeight || 0;
-  const height = Math.max(containerHeight, 250);
+  const { width, height } = await waitForLayoutSize(graph);
 
   const simulation = forceSimulation(graphData.nodes)
     .force('charge', forceManyBody().strength(-100 * repelForce))
@@ -161,24 +222,24 @@ async function renderGraph(graph, fullSlug) {
     return getComputedStyle(document.documentElement).getPropertyValue(name);
   }
 
-  // Quartz uses these CSS variables. Chirpy doesn't define them, so we provide
-  // safe fallbacks and/or map to Chirpy's variables when available.
+  // Graph colors are controlled by theme variables in `_sass/themes`.
   const computedStyleMap = {
-    '--secondary': resolveCssColor(cssVar('--secondary'), resolveCssColor(cssVar('--link-color'), '#0d6efd')),
-    '--tertiary': resolveCssColor(cssVar('--tertiary'), '#6c757d'),
-    '--gray': resolveCssColor(cssVar('--gray'), '#6c757d'),
-    '--light': resolveCssColor(cssVar('--light'), resolveCssColor(cssVar('--main-bg'), '#ffffff')),
-    '--lightgray': resolveCssColor(cssVar('--lightgray'), 'rgba(0,0,0,0.18)'),
-    '--dark': resolveCssColor(cssVar('--dark'), resolveCssColor(cssVar('--text-color'), '#2b2d31')),
-    '--darkgray': resolveCssColor(cssVar('--darkgray'), 'rgba(0,0,0,0.55)'),
+    '--graph-node-current': resolveCssColor(cssVar('--graph-node-current'), resolveCssColor(cssVar('--link-color'), '#0d6efd')),
+    '--graph-node-visited': resolveCssColor(cssVar('--graph-node-visited'), '#6c757d'),
+    '--graph-node-default': resolveCssColor(cssVar('--graph-node-default'), '#6c757d'),
+    '--graph-node-tag': resolveCssColor(cssVar('--graph-node-tag'), '#c2c6cc'),
+    '--graph-link-color': resolveCssColor(cssVar('--graph-link-color'), 'rgba(0,0,0,0.18)'),
+    '--graph-link-active-color': resolveCssColor(cssVar('--graph-link-active-color'), '#6c757d'),
+    '--graph-label-color': resolveCssColor(cssVar('--graph-label-color'), resolveCssColor(cssVar('--text-color'), '#2b2d31')),
     '--bodyFont': (cssVar('--bodyFont') ?? '').toString().trim() || 'system-ui'
   };
 
   const color = (d) => {
     const isCurrent = d.id === slug;
-    if (isCurrent) return computedStyleMap['--secondary'];
+    if (isCurrent) return computedStyleMap['--graph-node-current'];
+    if (d.id.startsWith('tags/')) return computedStyleMap['--graph-node-tag'];
     const isVisited = visited.has(d.id);
-    return isVisited ? computedStyleMap['--tertiary'] : computedStyleMap['--gray'];
+    return isVisited ? computedStyleMap['--graph-node-visited'] : computedStyleMap['--graph-node-default'];
   };
 
   function nodeRadius(d) {
@@ -188,12 +249,13 @@ async function renderGraph(graph, fullSlug) {
 
   const app = new Application();
   await app.init({
-    width,
+    width: Math.max(width, 1),
     height,
     antialias: true,
     autoStart: false,
     autoDensity: true,
     backgroundAlpha: 0,
+    resizeTo: graph,
     preference: 'webgpu',
     resolution: window.devicePixelRatio,
     eventMode: 'static'
@@ -222,7 +284,7 @@ async function renderGraph(graph, fullSlug) {
       anchor: { x: 0.5, y: 1.2 },
       style: {
         fontSize: fontSize * 15,
-        fill: computedStyleMap['--dark'],
+        fill: computedStyleMap['--graph-label-color'],
         fontFamily: computedStyleMap['--bodyFont']
       },
       resolution: window.devicePixelRatio * 4
@@ -269,7 +331,7 @@ async function renderGraph(graph, fullSlug) {
     linkContainer.addChild(gfx);
     linkRenderData.push({
       gfx,
-      color: computedStyleMap['--lightgray'],
+      color: computedStyleMap['--graph-link-color'],
       alpha: 1,
       active: false,
       simulationData: l
@@ -317,7 +379,7 @@ async function renderGraph(graph, fullSlug) {
       let alpha = 1;
       if (hoveredNodeId) alpha = l.active ? 1 : 0.2;
 
-      l.color = l.active ? computedStyleMap['--gray'] : computedStyleMap['--lightgray'];
+      l.color = l.active ? computedStyleMap['--graph-link-active-color'] : computedStyleMap['--graph-link-color'];
       tweenGroup.add(new Tweened(l).to({ alpha }, 200));
     }
 
@@ -486,13 +548,21 @@ async function renderGraph(graph, fullSlug) {
 
     for (const n of nodeRenderData) {
       const { x, y } = n.simulationData;
-      if (!x || !y) continue;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       n.gfx.position.set(x + width / 2, y + height / 2);
       if (n.label) n.label.position.set(x + width / 2, y + height / 2);
     }
 
     for (const l of linkRenderData) {
       const linkData = l.simulationData;
+      if (
+        !Number.isFinite(linkData.source?.x) ||
+        !Number.isFinite(linkData.source?.y) ||
+        !Number.isFinite(linkData.target?.x) ||
+        !Number.isFinite(linkData.target?.y)
+      ) {
+        continue;
+      }
       l.gfx.clear();
       l.gfx.moveTo(linkData.source.x + width / 2, linkData.source.y + height / 2);
       l.gfx

@@ -30,15 +30,21 @@ layout: default
 
 <!-- Get normal posts on current page -->
 
-{% assign normal_size = paginator.posts | size | minus: pinned_size %}
+{% assign normal_size = paginator.per_page | minus: pinned_size %}
+
+{% if pinned_size > 0 %}
+  {% assign normal_start = 0 %}
+{% else %}
+  {% assign normal_start = visible_start | minus: all_pinned.size %}
+{% endif %}
+
+{% assign normal_remaining = all_normal.size | minus: normal_start %}
+
+{% if normal_size > normal_remaining %}
+  {% assign normal_size = normal_remaining %}
+{% endif %}
 
 {% if normal_size > 0 %}
-  {% if pinned_size > 0 %}
-    {% assign normal_start = 0 %}
-  {% else %}
-    {% assign normal_start = visible_start | minus: all_pinned.size %}
-  {% endif %}
-
   {% assign normal_end = normal_start | plus: normal_size | minus: 1 %}
 
   {% for i in (normal_start..normal_end) %}

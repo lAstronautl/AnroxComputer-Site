@@ -29,7 +29,7 @@ module Jekyll
     priority :lowest
 
     MARKDOWN_LINK = /\[[^\]]*\]\(([^)]+)\)/.freeze
-    WIKILINK = /\[\[([^\]]+)\]\]/.freeze
+    WIKILINK = /(?<!!)\[\[([^\]]+)\]\]/.freeze
 
     def generate(site)
       cfg = site.config.fetch('graph', {})
@@ -44,6 +44,7 @@ module Jekyll
     def build_index(site, cfg)
       nodes = collect_nodes(site, cfg)
       known_full = nodes.keys.to_set
+      known_wiki = build_wiki_index(nodes)
 
       out = {}
       nodes.each do |full_slug, doc|
@@ -51,7 +52,7 @@ module Jekyll
           'slug' => full_slug,
           'title' => (doc.data['title'] || full_slug),
           'tags' => Array(doc.data['tags']).map(&:to_s),
-          'links' => extract_links(doc, full_slug, known_full, site)
+          'links' => extract_links(doc, full_slug, known_full, known_wiki, site)
         }
       end
 
@@ -109,7 +110,21 @@ module Jekyll
       nodes[full_slug] = doc
     end
 
-    def extract_links(doc, source_full_slug, known_full, site)
+    def build_wiki_index(nodes)
+      nodes.each_with_object({}) do |(full_slug, doc), index|
+        title = doc.data['title'].to_s.strip
+        index[normalize_wiki_title(title)] = full_slug unless title.empty?
+
+        basename = File.basename(doc.path.to_s, '.*').sub(/\A\d{2,4}-\d{1,2}-\d{1,2}-/, '')
+        index[normalize_wiki_title(basename)] ||= full_slug unless basename.empty?
+      end
+    end
+
+    def normalize_wiki_title(text)
+      text.to_s.strip.downcase
+    end
+
+    def extract_links(doc, source_full_slug, known_full, known_wiki, site)
       raw = doc.respond_to?(:content) ? doc.content.to_s : ''
       links = Set.new
 
@@ -120,7 +135,7 @@ module Jekyll
       end
 
       raw.scan(WIKILINK).each do |m|
-        dest_full = wikilink_to_full_slug(m.first)
+        dest_full = wikilink_to_full_slug(m.first, known_wiki)
         next unless dest_full && known_full.include?(dest_full)
         links.add(full_to_simple_slug(dest_full))
       end
@@ -153,13 +168,12 @@ module Jekyll
       url_to_full_slug(resolved, site_baseurl: '')
     end
 
-    def wikilink_to_full_slug(text)
+    def wikilink_to_full_slug(text, known_wiki)
       t = text.to_s.strip
       return nil if t.empty?
-      slug = t.split('|', 2).first.to_s.strip
-      slug = slug.gsub(/\s+/, '-')
-      # treat wikilinks as /slug/ pages
-      url_to_full_slug("/#{slug}/", site_baseurl: '')
+
+      title = t.split('|', 2).first.to_s.strip
+      known_wiki[normalize_wiki_title(title)]
     end
 
     def url_to_full_slug(url, site_baseurl:)

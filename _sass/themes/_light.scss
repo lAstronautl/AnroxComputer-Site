@@ -84,6 +84,21 @@
   --tag-hover: rgb(222 226 230);
   --search-tag-bg: #f8f9fa;
 
+  /* Graph */
+  --graph-bg: var(--main-bg);
+  --graph-border-color: var(--main-border-color);
+  --graph-control-color: var(--text-color);
+  --graph-control-hover-bg: var(--sidebar-hover-bg);
+  --graph-settings-bg: var(--main-bg);
+  --graph-settings-shadow: rgb(0 0 0 / 18%) 0 8px 30px;
+  --graph-node-current: var(--link-color);
+  --graph-node-visited: #6c757d;
+  --graph-node-default: #8e8e8e;
+  --graph-node-tag: #c2c6cc;
+  --graph-link-color: rgb(0 0 0 / 18%);
+  --graph-link-active-color: #6c757d;
+  --graph-label-color: var(--text-color);
+
   /* Categories */
   --categories-border: rgb(0 0 0 / 12.5%);
   --categories-hover-bg: var(--btn-border-color);
