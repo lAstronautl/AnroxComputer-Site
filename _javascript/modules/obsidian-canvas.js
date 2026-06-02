@@ -46,6 +46,14 @@ function worldBounds(nodes) {
   };
 }
 
+function layoutNode(node, bounds, padding) {
+  return {
+    ...node,
+    x: node.x - bounds.minX + padding,
+    y: node.y - bounds.minY + padding
+  };
+}
+
 function anchor(node, side) {
   const pair = SIDE_ANCHORS[side] || [0.5, 0.5];
   return {
@@ -139,13 +147,16 @@ function initViewer(viewer) {
   const edges = data.edges || [];
   const bounds = worldBounds(nodes);
   const padding = 180;
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const stageWidth = bounds.width + padding * 2;
+  const stageHeight = bounds.height + padding * 2;
+  const layoutNodes = nodes.map((node) => layoutNode(node, bounds, padding));
+  const nodeById = new Map(layoutNodes.map((node) => [node.id, node]));
   const state = { x: 0, y: 0, scale: 1 };
 
-  stage.style.width = `${bounds.width + padding * 2}px`;
-  stage.style.height = `${bounds.height + padding * 2}px`;
+  stage.style.width = `${stageWidth}px`;
+  stage.style.height = `${stageHeight}px`;
   stage.style.transformOrigin = '0 0';
-  svg.setAttribute('viewBox', `${bounds.minX - padding} ${bounds.minY - padding} ${bounds.width + padding * 2} ${bounds.height + padding * 2}`);
+  svg.setAttribute('viewBox', `0 0 ${stageWidth} ${stageHeight}`);
   svg.innerHTML = '';
   nodesEl.innerHTML = '';
 
@@ -159,18 +170,18 @@ function initViewer(viewer) {
     svg.appendChild(line);
   });
 
-  nodes.forEach((node) => nodesEl.appendChild(renderNode(node, baseurl)));
+  layoutNodes.forEach((node) => nodesEl.appendChild(renderNode(node, baseurl)));
 
   function fit() {
     const rect = viewer.getBoundingClientRect();
     const toolbarHeight = 0;
     const scale = Math.min(
       1.2,
-      Math.max(0.15, Math.min((rect.width - 32) / bounds.width, (rect.height - toolbarHeight - 32) / bounds.height))
+      Math.max(0.15, Math.min((rect.width - 32) / stageWidth, (rect.height - toolbarHeight - 32) / stageHeight))
     );
     state.scale = scale;
-    state.x = (rect.width - bounds.width * scale) / 2 - bounds.minX * scale;
-    state.y = (rect.height - bounds.height * scale) / 2 - bounds.minY * scale;
+    state.x = (rect.width - stageWidth * scale) / 2;
+    state.y = (rect.height - stageHeight * scale) / 2;
     applyTransform(stage, state);
   }
 
