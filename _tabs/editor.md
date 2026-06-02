@@ -1,6 +1,6 @@
 ---
 layout: editor
-title: Editor
+title: Редактор документов
 icon: fas fa-pen-to-square
 order: 6
 ---
