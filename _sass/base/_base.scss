@@ -88,7 +88,7 @@ main {
   img {
     height: 100%;
     -o-object-fit: cover;
-    object-fit: cover;
+    object-fit: contain;
 
     @extend %rounded;
 

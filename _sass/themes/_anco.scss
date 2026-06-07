@@ -135,6 +135,74 @@
     display: none;
   }
 
+  details {
+    background: #0d0d0d;
+    border: 1px solid #2b2f35;
+    border-radius: 10px;
+    margin: 12px 0;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      border-color: #42464b;
+      box-shadow: 0 0 0 1px rgba(158, 0, 0, 0.15);
+    }
+
+    &[open] {
+      border-color: #620505;
+      box-shadow: 0 0 18px rgba(240, 90, 90, 0.08);
+    }
+  }
+
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 14px;
+    background: linear-gradient(90deg, #161718, #0d0d0d);
+    color: #f05a5a;
+    font-weight: 600;
+    border-bottom: 1px solid #1e2124;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s ease, color 0.2s ease;
+
+    &:hover {
+      background: linear-gradient(90deg, #1e2124, #161718);
+      color: #ffffff;
+    }
+
+    &:focus {
+      outline: none;
+    }
+
+    /* стрелочка */
+    &::after {
+      content: "▸";
+      color: #9e0000;
+      transition: transform 0.2s ease, color 0.2s ease;
+    }
+
+    details[open] &::after {
+      transform: rotate(90deg);
+      color: #f05a5a;
+    }
+  }
+
+  /* контент внутри details */
+  details > *:not(summary) {
+    padding: 12px 14px;
+    color: #9e0000;
+    background: #0d0d0d;
+    border-top: 1px solid #1e2124;
+  }
+
+  /* текст внутри (если используется markdown/wordpress blocks) */
+  details p {
+    margin: 8px 0;
+    color: #9e0000;
+  }
+
   /* Categories */
   .categories.card,
   .list-group-item {
