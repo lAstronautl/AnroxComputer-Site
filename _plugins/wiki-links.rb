@@ -14,7 +14,8 @@ module WikiLinks
   module_function
 
   def post_index(site)
-    site.posts.docs.each_with_object({}) do |post, index|
+    @post_indexes ||= {}
+    @post_indexes[site.source] ||= site.posts.docs.each_with_object({}) do |post, index|
       title = post.data["title"].to_s.strip
       index[normalize(title)] = post unless title.empty?
 
@@ -205,11 +206,13 @@ Jekyll::Hooks.register [:posts, :pages, :documents], :pre_render do |doc|
 
   doc.content = doc.content.gsub(WikiLinks::WIKI_LINK) do
     text = Regexp.last_match(1).strip
-    canvas = WikiLinks.canvas_embed(doc.site, text)
+    target, alias_text = text.split("|", 2)
+
+    canvas = WikiLinks.canvas_embed(doc.site, target)
     next canvas if canvas
+    display_text = (alias_text || target).strip
+    post = index[WikiLinks.normalize(target)]
 
-    post = index[WikiLinks.normalize(text)]
-
-    post ? WikiLinks.markdown_link(doc.site, text, post) : Regexp.last_match(0)
+    post ? WikiLinks.markdown_link(doc.site, display_text, post) : Regexp.last_match(0)
   end
 end

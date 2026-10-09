@@ -101,8 +101,8 @@ module Jekyll
         return unless tags.include?(required_tag.to_s)
       end
 
-      path = doc.path.to_s
-      return if exclude_paths.any? { |prefix| path.start_with?(prefix) }
+      relative_path = doc.path.to_s.tr("\\", "/").sub(%r!\A#{Regexp.escape(site.source.to_s.tr("\\", "/"))}/!, "")
+      return if exclude_paths.any? { |prefix| relative_path.start_with?(prefix.sub(%r!\A/+!, "")) }
 
       full_slug = url_to_full_slug(doc.url.to_s, site_baseurl: site.config['baseurl'].to_s)
       return if full_slug.nil? || full_slug.empty?

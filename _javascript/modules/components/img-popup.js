@@ -32,7 +32,7 @@ export function imgPopup() {
     document.querySelector('.popup.dark') === null
   );
 
-  if (Theme.visualState === Theme.DARK) {
+  if (Theme.isDark) {
     selector = darkImages;
   }
 

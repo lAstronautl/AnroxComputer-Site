@@ -42,6 +42,15 @@ class Theme {
     }
   }
 
+  /**
+   * Whether the currently active mode should be treated as dark (includes 'anco').
+   *
+   * @returns {boolean}
+   */
+  static get isDark() {
+    return this.#hasMode ? this.#isDarkMode : this.#sysDark;
+  }
+
   static get #mode() {
     return (
       sessionStorage.getItem(this.#modeKey) ||

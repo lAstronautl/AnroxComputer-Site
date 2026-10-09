@@ -21,9 +21,19 @@ module ObsidianCanvas
 end
 
 Jekyll::Hooks.register :site, :post_read do |site|
+  used_slugs = {}
+
   ObsidianCanvas.canvas_files(site).each do |path|
     title = File.basename(path, ".canvas")
     slug = ObsidianCanvas.slugify(title)
+
+    if used_slugs.key?(slug)
+      Jekyll.logger.warn "ObsidianCanvas:",
+        "Skipping #{path}: slug \"#{slug}\" already used by #{used_slugs[slug]}"
+      next
+    end
+    used_slugs[slug] = path
+
     data = JSON.parse(File.read(path, encoding: "UTF-8"))
 
     page = Jekyll::PageWithoutAFile.new(site, site.source, "canvas/#{slug}", "index.html")

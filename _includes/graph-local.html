@@ -1,8 +1,10 @@
 {% if site.graph and site.graph.enabled and site.graph.local_in_post %}
   {% assign index_url = '/assets/graph/content-index.json' | relative_url %}
 
+  {% assign local_depth = site.graph.local_depth | default: 1 %}
   {% assign local_cfg = site.graph.local_cfg
-    | default: '{"drag":true,"zoom":true,"depth":1,"scale":1.1,"repelForce":0.5,"centerForce":0.3,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":false,"enableRadial":false}'
+    | default: '{"drag":true,"zoom":true,"depth":DEPTH,"scale":1.1,"repelForce":0.5,"centerForce":0.3,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":false,"enableRadial":false}'
+    | replace: 'DEPTH', local_depth
   %}
   {% assign global_cfg = site.graph.global_cfg
     | default: '{"drag":true,"zoom":true,"depth":-1,"scale":0.9,"repelForce":0.5,"centerForce":0.2,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":true,"enableRadial":true}'
