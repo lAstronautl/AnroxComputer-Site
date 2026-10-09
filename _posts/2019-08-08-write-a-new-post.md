@@ -1,6 +1,6 @@
 ---
 title: Writing a New Post
-date: 2019-08-08 14:10:00 +0800
+number: 2
 categories: [Blogging, Tutorial]
 tags: [writing, graph]
 render_with_liquid: false
@@ -20,7 +20,6 @@ Basically, you need to fill the [Front Matter](https://jekyllrb.com/docs/front-m
 ```yaml
 ---
 title: TITLE
-date: YYYY-MM-DD HH:MM:SS +/-TTTT
 categories: [TOP_CATEGORY, SUB_CATEGORY]
 tags: [TAG]     # TAG names should always be lowercase
 ---

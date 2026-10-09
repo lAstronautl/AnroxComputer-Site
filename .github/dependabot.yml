@@ -1,5 +1,4 @@
-# Dependabot is disabled for this repo (no automated dependency-update PRs).
-# To re-enable, uncomment the config below.
+# Dependabot is disabled for this repo.
 
 # version: 2
 # updates:
@@ -30,3 +29,5 @@
 #     directory: "/"
 #     schedule:
 #       interval: weekly
+version: 2
+updates: []
