@@ -5,6 +5,7 @@
 require 'json'
 require 'fileutils'
 require 'set'
+require 'uri'
 
 module Jekyll
   class GraphIndexFile < StaticFile
@@ -179,6 +180,12 @@ module Jekyll
     def url_to_full_slug(url, site_baseurl:)
       u = url.to_s.strip.tr('\\', '/')
       return nil if u.empty?
+
+      u = begin
+        URI::DEFAULT_PARSER.unescape(u)
+      rescue ArgumentError
+        u
+      end
 
       # remove baseurl prefix if present
       b = site_baseurl.to_s.strip

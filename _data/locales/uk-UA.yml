@@ -51,7 +51,6 @@ notification:
 # ----- Posts related labels -----
 
 post:
-  written_by: Автор
   posted: Час публікації
   updated: Оновлено
   words: слів

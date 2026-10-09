@@ -1,0 +1,44 @@
+{%- comment -%}
+  Render an interactive image map: an image with clickable/hoverable
+  polygon zones that show an animated tooltip card on hover.
+
+  Arguments:
+    src:   required, image path (same rules as other embeds)
+    zones: required, array of
+      points: "x1,y1 x2,y2 x3,y3 ..." (percentages of image width/height)
+      title:  zone title
+      text:   zone description
+      link:   optional post/page url. If set, the tooltip shows
+              "Нажмите, чтобы открыть" and a post preview instead of text.
+{%- endcomment -%}
+
+{% assign img_src = include.src %}
+{% unless img_src contains '://' %}
+  {%- capture img_src -%}
+    {% include media-url.html src=img_src subpath=page.media_subpath %}
+  {%- endcapture -%}
+{% endunless %}
+
+<div class="interactive-map" data-interactive-map>
+  <img src="{{ img_src | strip }}" alt="{{ include.alt | default: 'Interactive map' }}" class="interactive-map-img">
+  <svg class="interactive-map-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+    {% for zone in include.zones %}
+      <polygon
+        points="{{ zone.points }}"
+        class="interactive-map-zone"
+        tabindex="0"
+        data-title="{{ zone.title | escape }}"
+        {% if zone.link %}
+          data-link="{{ zone.link | relative_url }}"
+          data-link-label="Нажмите, чтобы открыть"
+        {% else %}
+          data-text="{{ zone.text | escape }}"
+        {% endif %}
+      ></polygon>
+    {% endfor %}
+  </svg>
+  <div class="interactive-map-tooltip" data-interactive-map-tooltip hidden>
+    <div class="interactive-map-tooltip-title" data-tooltip-title></div>
+    <div class="interactive-map-tooltip-body" data-tooltip-body></div>
+  </div>
+</div>

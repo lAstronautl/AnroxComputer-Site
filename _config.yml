@@ -35,7 +35,7 @@ description: >- # used by seo meta and the atom feed
 url: "https://lastronautl.github.io"
 
 github:
-  username: https://github.com/Dalexiandr/StarHorizonPublic
+  username: https://github.com/StarHorizon14/StarHorizon.git
 
 # ↑ --------------------------
 # The end of `jekyll-seo-tag` settings
@@ -69,19 +69,14 @@ theme_mode: anco
 # will be added to all media resources (site avatar, posts' images, audio and video files) paths starting with '/'
 #
 # e.g. 'https://cdn.com'
-cdn: "https://cdn.jsdelivr.net/gh/lAstronautl/AnroxComputers-CDN@master"
-
-wiki_links:
-  # Folders on the CDN to try for ![[image.png]] embeds.
-  cdn_image_dirs:
-    - image
+cdn: ""
 
 # the avatar on sidebar, support local or CORS resources
-avatar: "/image/Anrox_logo_724x724.png"
+avatar: "/assets/img/Anrox_logo_724x724.png"
 
 # The URL of the site-wide social preview image used in SEO `og:image` meta tag.
 # It can be overridden by a customized `page.image` in front matter.
-social_preview_image: /image/Anrox_Logo.png
+social_preview_image: /assets/img/Anrox_Logo.png
 
 # boolean type, the global switch for TOC in posts.
 toc: true

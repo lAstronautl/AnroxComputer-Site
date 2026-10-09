@@ -1,7 +1,6 @@
 ---
 title: История AnroxComputers
 description: История основания AnroxComputers
-author: Xigovir
 date: 2026-04-01 11:33:00 +0800
 categories:
   - Лор
@@ -11,7 +10,7 @@ tags:
   - graph
 mermaid: true
 image:
-  path: image/Anrox_logo.png
+  path: /assets/img/posts/Anco_banner.gif
   preview: false
 ---
 

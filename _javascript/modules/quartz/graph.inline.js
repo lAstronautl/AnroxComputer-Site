@@ -396,7 +396,7 @@ async function renderGraph(graph, fullSlug) {
     tweens.get('label')?.stop();
     const tweenGroup = new TweenGroup();
 
-    const defaultScale = 1 / scale;
+    const defaultScale = (1 / scale) * (1 / currentTransform.k);
     const activeScale = defaultScale * 1.1;
     for (const n of nodeRenderData) {
       const nodeId = n.simulationData.id;
@@ -527,6 +527,15 @@ async function renderGraph(graph, fullSlug) {
           currentTransform = transform;
           stage.scale.set(transform.k, transform.k);
           stage.position.set(transform.x, transform.y);
+
+          // Keep label text a stable on-screen size: counteract the stage
+          // scale so the rasterized text isn't down/up-scaled and blurred.
+          const inverseZoom = 1 / transform.k;
+          for (const n of nodeRenderData) {
+            if (hoveredNodeId !== n.simulationData.id) {
+              n.label.scale.set((1 / scale) * inverseZoom);
+            }
+          }
 
           // zoom adjusts opacity of labels too
           const sc = transform.k * opacityScale;

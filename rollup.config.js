@@ -90,6 +90,8 @@ export default [
   build('page'),
   build('post'),
   build('misc'),
+  build('map-editor'),
+  build('post-editor'),
   build('theme', { outputName: 'Theme' }),
   build('app', { src: SRC_PWA, jekyll: true }),
   build('sw', { src: SRC_PWA, jekyll: true })

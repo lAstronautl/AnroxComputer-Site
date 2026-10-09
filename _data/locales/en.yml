@@ -51,7 +51,6 @@ notification:
 # ----- Posts related labels -----
 
 post:
-  written_by: By
   posted: Posted
   updated: Updated
   words: words

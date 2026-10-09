@@ -6,7 +6,8 @@ import {
   initLocaleDatetime,
   initClipboard,
   initToc,
-  loadMermaid
+  loadMermaid,
+  initInteractiveMaps
 } from './modules/components';
 import { initObsidianCanvas } from './modules/obsidian-canvas';
 
@@ -19,4 +20,5 @@ initClipboard();
 initTopbar();
 loadMermaid();
 initObsidianCanvas();
+initInteractiveMaps();
 basic();
