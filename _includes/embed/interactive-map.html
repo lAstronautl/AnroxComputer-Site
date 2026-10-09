@@ -12,15 +12,8 @@
               "Нажмите, чтобы открыть" and a post preview instead of text.
 {%- endcomment -%}
 
-{% assign img_src = include.src %}
-{% unless img_src contains '://' %}
-  {%- capture img_src -%}
-    {% include media-url.html src=img_src subpath=page.media_subpath %}
-  {%- endcapture -%}
-{% endunless %}
-
 <div class="interactive-map" data-interactive-map>
-  <img src="{{ img_src | strip }}" alt="{{ include.alt | default: 'Interactive map' }}" class="interactive-map-img">
+  <img src="{{ include.src | strip }}" alt="{{ include.alt | default: 'Interactive map' }}" class="interactive-map-img">
   <svg class="interactive-map-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
     {% for zone in include.zones %}
       <polygon

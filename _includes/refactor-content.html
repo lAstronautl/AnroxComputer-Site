@@ -58,6 +58,7 @@
     {% assign _right = _img_snippet | remove: _left %}
 
     {% unless _left contains 'src=' %}
+      {% assign _img_content = _img_content | append: IMG_TAG | append: _img_snippet %}
       {% continue %}
     {% endunless %}
 
