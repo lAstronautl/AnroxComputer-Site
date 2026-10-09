@@ -113,7 +113,7 @@
   border-style: dashed;
   color: var(--text-muted-color);
   font-size: 0.7rem;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 768px) {

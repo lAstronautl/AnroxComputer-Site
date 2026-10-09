@@ -145,12 +145,12 @@
 
     &:hover {
       border-color: #42464b;
-      box-shadow: 0 0 0 1px rgba(158, 0, 0, 0.15);
+      box-shadow: 0 0 0 1px rgb(158 0 0 / 15%);
     }
 
     &[open] {
       border-color: #620505;
-      box-shadow: 0 0 18px rgba(240, 90, 90, 0.08);
+      box-shadow: 0 0 18px rgb(240 90 90 / 8%);
     }
   }
 

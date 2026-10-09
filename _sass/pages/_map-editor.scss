@@ -40,7 +40,7 @@
   }
 
   .map-editor-draft-polygon {
-    fill: rgba(158, 0, 0, 0.2);
+    fill: rgb(158 0 0 / 20%);
     stroke: #9e0000;
     stroke-width: 0.3;
   }
@@ -50,7 +50,7 @@
   }
 
   .map-editor-saved-polygon {
-    fill: rgba(60, 120, 60, 0.18);
+    fill: rgb(60 120 60 / 18%);
     stroke: #3c783c;
     stroke-width: 0.3;
   }

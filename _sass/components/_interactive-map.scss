@@ -28,7 +28,7 @@
 
     &:hover,
     &:focus {
-      fill: var(--map-zone-hover-fill, rgba(158, 0, 0, 0.18));
+      fill: var(--map-zone-hover-fill, rgb(158 0 0 / 18%));
       stroke: var(--map-zone-hover-stroke, #9e0000);
     }
   }
@@ -39,9 +39,9 @@
     max-width: 260px;
     padding: 0.75rem 1rem;
     border-radius: 0.6rem;
-    border: 1px solid var(--staff-card-border, rgba(255, 255, 255, 0.08));
-    background: var(--map-tooltip-bg, rgba(20, 20, 24, 0.95));
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--staff-card-border, rgb(255 255 255 / 8%));
+    background: var(--map-tooltip-bg, rgb(20 20 24 / 95%));
+    box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
     pointer-events: none;
     opacity: 0;
     transform: translateY(6px) scale(0.97);

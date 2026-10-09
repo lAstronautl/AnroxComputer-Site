@@ -292,7 +292,6 @@ async function renderGraph(graph, fullSlug) {
     label.scale.set(1 / scale);
 
     let oldLabelOpacity = 0;
-    const isTagNode = nodeId.startsWith('tags/');
     const gfx = new Graphics({
       interactive: true,
       label: nodeId,
@@ -369,7 +368,6 @@ async function renderGraph(graph, fullSlug) {
   }
 
   let dragStartTime = 0;
-  let dragging = false;
 
   function renderLinks() {
     tweens.get('link')?.stop();
@@ -483,7 +481,6 @@ async function renderGraph(graph, fullSlug) {
             fy: event.subject.fy
           };
           dragStartTime = Date.now();
-          dragging = true;
         })
         .on('drag', (event) => {
           const initPos = event.subject.__initialDragPos;
@@ -494,7 +491,6 @@ async function renderGraph(graph, fullSlug) {
           if (!event.active) simulation.alphaTarget(0);
           event.subject.fx = null;
           event.subject.fy = null;
-          dragging = false;
 
           // click (short drag)
           if (Date.now() - dragStartTime < 500) {
