@@ -15,8 +15,7 @@ compress_html: false
     <button type="button" id="map-editor-undo" disabled>Отменить точку</button>
     <button type="button" id="map-editor-clear" disabled>Очистить всё</button>
   </div>
-  <div class="map-editor-canvas-wrap">
-    <img id="map-editor-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7" alt="Загруженная карта" hidden="hidden" />
+  <div class="map-editor-canvas-wrap" id="map-editor-canvas-wrap">
     <svg id="map-editor-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
   </div>
   <div class="map-editor-zones" id="map-editor-zones"></div>

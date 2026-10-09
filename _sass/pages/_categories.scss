@@ -5,6 +5,8 @@
   color: gray;
 }
 
+$indent-step: 0.75rem; /* one nesting level: category(0) > sub-category(1) > post(2) > heading(4) */
+
 .categories {
   margin-bottom: 2rem;
   border-color: var(--categories-border);
@@ -20,11 +22,17 @@
     padding: 0.75rem;
     border-radius: $radius;
     border-bottom: 0;
+    color: var(--heading-color, var(--text-color));
 
     &.hide-border-bottom {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
     }
+  }
+
+  .sub-category-name {
+    color: var(--heading-color, var(--text-color));
+    font-weight: 500;
   }
 
   i {
@@ -36,7 +44,7 @@
   .list-group-item {
     border-left: none;
     border-right: none;
-    padding-left: 2rem;
+    padding-left: $indent-step * 1;
 
     &:first-child {
       border-top-left-radius: 0;
@@ -45,6 +53,75 @@
 
     &:last-child {
       border-bottom: 0;
+    }
+  }
+
+  /* Sub-categories: indent the whole row and mark it with a left accent bar */
+  &.card > .collapse > .list-group > .list-group-item {
+    margin-left: $indent-step * 1;
+    width: calc(100% - #{$indent-step * 1});
+    border-left: 2px solid var(--categories-border);
+    background-color: var(--card-header-bg);
+  }
+
+  .post-item {
+    margin-left: $indent-step * 2;
+    width: calc(100% - #{$indent-step * 2});
+    padding-left: $indent-step * 1;
+    border-left: 2px solid var(--link-color);
+    background-color: var(--card-bg);
+
+    .post-link {
+      color: var(--heading-color, var(--link-color));
+      font-weight: 600;
+
+      &:hover {
+        color: var(--link-color);
+        text-decoration: underline;
+      }
+    }
+
+    .post-thumb {
+      width: 1.3rem;
+      height: 1.3rem;
+      object-fit: cover;
+      border-radius: 0.25rem;
+      flex-shrink: 0;
+
+      image-rendering: auto;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: -webkit-optimize-contrast;
+    }
+  }
+
+  .heading-list {
+    .heading-item {
+      margin-left: $indent-step * 4;
+      width: calc(100% - #{$indent-step * 4});
+      padding-left: $indent-step * 1;
+      border-left: 2px dashed var(--categories-border);
+      background-color: var(--sidebar-bg, var(--card-bg));
+
+      &:first-child {
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+      }
+    }
+
+    .heading-link {
+      color: var(--text-muted-color);
+      font-size: 0.85rem;
+
+      &::before {
+        content: '— ';
+        opacity: 0.6;
+      }
+
+      &:hover {
+        color: var(--link-color);
+        text-decoration: underline;
+      }
     }
   }
 } /* .categories */

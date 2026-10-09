@@ -21,6 +21,8 @@
 
   .card {
     border: 0;
+    border-radius: v.$radius-lg;
+    overflow: hidden;
     background: none;
 
     %img-radius {
@@ -36,6 +38,11 @@
 
       img {
         @extend %img-radius;
+
+        image-rendering: auto;
+        image-rendering: crisp-edges;
+        image-rendering: pixelated;
+        image-rendering: -webkit-optimize-contrast;
       }
     }
 

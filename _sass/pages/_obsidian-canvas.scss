@@ -76,7 +76,8 @@
 
 .obsidian-canvas-node {
   --canvas-node-bg: var(--main-bg);
-  --canvas-node-accent: var(--link-color, #2f70b7);
+  --canvas-node-accent: var(--text-color, #9e0000);
+  --canvas-node-text: var(--link-color, #f05a5a);
 
   position: absolute;
   display: flex;
@@ -88,7 +89,7 @@
   border: 2px solid var(--canvas-node-accent);
   border-radius: 0.45rem;
   background: var(--canvas-node-bg);
-  color: var(--text-color);
+  color: var(--canvas-node-text);
   font-size: 0.95rem;
   line-height: 1.25;
   text-align: center;

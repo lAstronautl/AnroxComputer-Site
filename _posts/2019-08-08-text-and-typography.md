@@ -15,6 +15,12 @@ hidden: true
 image:
   path: /assets/img/Anrox_Logo.png
   preview: false
+interactive_map:
+  image: /assets/img/posts/maps.png
+  zones:
+    - points: "4.77,7.22 4.40,29.09 10.76,34.95 17.86,27.87 29.35,28.11 34.12,32.88 45.74,32.88 45.99,20.54 36.45,10.89 31.19,10.76 24.71,3.92 7.95,4.04"
+      title: "Зона 1"
+      text: "Описание зоны"
 ---
 
 ## Headings
@@ -202,3 +208,35 @@ The image below will toggle dark/light mode based on theme preference, notice it
 
 [^footnote]: The footnote source
 [^fn-nth-2]: The 2nd footnote source
+
+## Staff Cards
+
+<div class="staff-cards">
+  <div class="staff-card">
+    <div class="staff-card-icon"><i class="fas fa-user"></i></div>
+    <div class="staff-card-name">Пример должности</div>
+    <div class="staff-card-desc">Карточка сотрудника с иконкой, именем и описанием обязанностей.</div>
+  </div>
+  <div class="staff-card">
+    <div class="staff-card-icon"><i class="fas fa-user"></i></div>
+    <div class="staff-card-name">Вторая карточка</div>
+    <div class="staff-card-desc">Карточки автоматически выстраиваются в сетку.</div>
+  </div>
+  <div class="staff-card">
+    <div class="staff-card-icon"><i class="fas fa-user"></i></div>
+    <div class="staff-card-name">Третья карточка</div>
+    <div class="staff-card-desc">Используются в постах про отряды и департаменты.</div>
+  </div>
+</div>
+
+## Wiki Links
+
+Ссылка на другой пост через двойные скобки: [[ДЗИС]].
+
+## Graph View
+
+Этот пост помечен тегом `graph`, поэтому участвует в визуализации связей — см. локальный граф в боковой панели поста и вкладку «Граф» в меню.
+
+## Interactive Map
+
+{% include embed/interactive-map.html src=page.interactive_map.image zones=page.interactive_map.zones %}

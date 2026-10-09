@@ -18,6 +18,7 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
   width: v.$sidebar-width;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border-color);
+  transition: width 0.3s ease, transform 0.3s ease;
 
   /* Hide scrollbar for IE, Edge and Firefox */
   -ms-overflow-style: none; /* IE and Edge */
@@ -41,6 +42,90 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
 
   @include bp.xxxl {
     width: v.$sidebar-width-large;
+  }
+
+  .sidebar-collapse-trigger {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--sidebar-border-color);
+    border-radius: 50%;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-muted-color);
+    cursor: pointer;
+    transition: transform 0.3s ease, color 0.2s ease;
+
+    @include bp.lg {
+      display: flex;
+    }
+
+    &:hover {
+      color: var(--sidebar-active-color);
+    }
+
+    i {
+      transition: transform 0.3s ease;
+    }
+  }
+
+  @include bp.lg {
+    [sidebar-collapsed] & {
+      width: 4.5rem;
+
+      .site-title,
+      .site-subtitle,
+      .nav-link span {
+        display: none;
+      }
+
+      .profile-wrapper {
+        padding-left: 0;
+        padding-right: 0;
+        display: flex;
+        justify-content: center;
+      }
+
+      #avatar {
+        width: 2.5rem;
+        height: 2.5rem;
+      }
+
+      li.nav-item {
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      a.nav-link {
+        justify-content: center;
+
+        i {
+          margin-right: 0;
+        }
+      }
+
+      .sidebar-bottom {
+        justify-content: center;
+
+        .nav-link {
+          justify-content: center;
+
+          i {
+            margin-right: 0;
+          }
+        }
+      }
+
+      .sidebar-collapse-trigger i {
+        transform: rotate(180deg);
+      }
+    }
   }
 
   %sidebar-link-hover {

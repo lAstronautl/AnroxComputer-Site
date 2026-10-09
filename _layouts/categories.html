@@ -7,6 +7,8 @@ layout: page
 
 {% assign HEAD_PREFIX = 'h_' %}
 {% assign LIST_PREFIX = 'l_' %}
+{% assign POST_PREFIX = 'p_' %}
+{% assign HEADING_PREFIX = 'g_' %}
 
 {% assign group_index = 0 %}
 
@@ -14,8 +16,12 @@ layout: page
 
 {% for category in sort_categories %}
   {% assign category_name = category | first %}
-  {% assign posts_of_category = category | last %}
+  {% assign posts_of_category = category | last | where_exp: 'item', 'item.hidden != true' %}
   {% assign first_post = posts_of_category | first %}
+
+  {% unless first_post %}
+    {% continue %}
+  {% endunless %}
 
   {% if category_name == first_post.categories[0] %}
     {% assign sub_categories = '' | split: '' %}
@@ -32,6 +38,14 @@ layout: page
     {% assign sub_categories = sub_categories | sort %}
     {% assign sub_categories_size = sub_categories | size %}
 
+    {% assign direct_posts = '' | split: '' %}
+    {% for post in posts_of_category %}
+      {% unless post.categories[1] %}
+        {% assign direct_posts = direct_posts | push: post %}
+      {% endunless %}
+    {% endfor %}
+    {% assign direct_posts_size = direct_posts | size %}
+
     <div class="card categories">
       <!-- top-category -->
       <div
@@ -39,10 +53,9 @@ layout: page
         class="card-header d-flex justify-content-between hide-border-bottom"
       >
         <span class="ms-2">
-          <i class="far fa-folder{% if sub_categories_size > 0 %}-open{% endif %} fa-fw"></i>
+          <i class="far fa-folder{% if sub_categories_size > 0 or direct_posts_size > 0 %}-open{% endif %} fa-fw"></i>
 
-          {% capture _category_url %}/categories/{{ category_name | slugify | url_encode }}/{% endcapture %}
-          <a href="{{ _category_url | relative_url }}" class="mx-2">{{ category_name }}</a>
+          <span class="mx-2">{{ category_name }}</span>
 
           <!-- content count -->
           {% assign top_posts_size = site.categories[category_name] | size %}
@@ -80,7 +93,7 @@ layout: page
         </span>
 
         <!-- arrow -->
-        {% if sub_categories_size > 0 %}
+        {% if sub_categories_size > 0 or direct_posts_size > 0 %}
           <a
             href="#{{ LIST_PREFIX }}{{ group_index }}"
             data-bs-toggle="collapse"
@@ -98,33 +111,158 @@ layout: page
       </div>
       <!-- .card-header -->
 
-      <!-- Sub-categories -->
-      {% if sub_categories_size > 0 %}
+      <!-- Sub-categories & direct posts -->
+      {% if sub_categories_size > 0 or direct_posts_size > 0 %}
         <div id="{{ LIST_PREFIX }}{{ group_index }}" class="collapse show" aria-expanded="true">
           <ul class="list-group">
             {% for sub_category in sub_categories %}
-              <li class="list-group-item">
-                <i class="far fa-folder fa-fw"></i>
+              {% assign sub_index = sub_category | slugify %}
+              {% assign sub_posts = site.categories[sub_category] %}
+              {% assign sub_posts_size = sub_posts | size %}
 
-                {% capture _sub_ctg_url %}/categories/{{ sub_category | slugify | url_encode }}/{% endcapture %}
-                <a href="{{ _sub_ctg_url | relative_url }}" class="mx-2">{{ sub_category }}</a>
+              <li class="list-group-item p-0">
+                <div class="d-flex justify-content-between align-items-center px-2 py-2">
+                  <span>
+                    <i class="far fa-folder fa-fw"></i>
+                    <span class="mx-2 sub-category-name">{{ sub_category }}</span>
 
-                {% assign posts_size = site.categories[sub_category] | size %}
-                <span class="text-muted small font-weight-light">
-                  {{ posts_size }}
+                    <span class="text-muted small font-weight-light">
+                      {{ sub_posts_size }}
 
-                  {% if posts_size > 1 %}
-                    {{
-                      site.data.locales[lang].categories.post_measure.plural
-                      | default: site.data.locales[lang].categories.post_measure
-                    }}
-                  {% else %}
-                    {{
-                      site.data.locales[lang].categories.post_measure.singular
-                      | default: site.data.locales[lang].categories.post_measure
-                    }}
+                      {% if sub_posts_size > 1 %}
+                        {{
+                          site.data.locales[lang].categories.post_measure.plural
+                          | default: site.data.locales[lang].categories.post_measure
+                        }}
+                      {% else %}
+                        {{
+                          site.data.locales[lang].categories.post_measure.singular
+                          | default: site.data.locales[lang].categories.post_measure
+                        }}
+                      {% endif %}
+                    </span>
+                  </span>
+
+                  {% if sub_posts_size > 0 %}
+                    <a
+                      href="#{{ LIST_PREFIX }}{{ group_index }}_{{ sub_index }}"
+                      data-bs-toggle="collapse"
+                      aria-expanded="false"
+                      aria-label="sub-{{ sub_index }}-trigger"
+                      class="category-trigger hide-border-bottom rotate"
+                    >
+                      <i class="fas fa-fw fa-angle-down"></i>
+                    </a>
                   {% endif %}
-                </span>
+                </div>
+
+                {% if sub_posts_size > 0 %}
+                  <div id="{{ LIST_PREFIX }}{{ group_index }}_{{ sub_index }}" class="collapse">
+                    <ul class="list-group">
+                      {% for post in sub_posts %}
+                        {% assign post_index = post.url | slugify %}
+                        {% assign headings = post.content | split: '<h2 id="' %}
+                        {% assign headings_size = headings.size | minus: 1 %}
+
+                        <li class="list-group-item post-item p-0">
+                          <div class="d-flex justify-content-between align-items-center px-2 py-2">
+                            <a href="{{ post.url | relative_url }}" class="post-link d-flex align-items-center mx-2">
+                              {% if post.image %}
+                                {% assign post_image_path = post.image.path | default: post.image %}
+                                {%- capture post_image_url -%}
+                                  {% include media-url.html src=post_image_path subpath=post.media_subpath %}
+                                {%- endcapture -%}
+                                <img src="{{ post_image_url | strip }}" alt="" class="post-thumb me-2">
+                              {% else %}
+                                <i class="far fa-file-lines fa-fw me-2"></i>
+                              {% endif %}
+                              {{ post.title }}
+                            </a>
+
+                            {% if headings_size > 0 %}
+                              <a
+                                href="#{{ POST_PREFIX }}{{ group_index }}_{{ sub_index }}_{{ post_index }}"
+                                data-bs-toggle="collapse"
+                                aria-expanded="false"
+                                aria-label="post-{{ post_index }}-trigger"
+                                class="category-trigger hide-border-bottom rotate"
+                              >
+                                <i class="fas fa-fw fa-angle-down"></i>
+                              </a>
+                            {% endif %}
+                          </div>
+
+                          {% if headings_size > 0 %}
+                            <div id="{{ POST_PREFIX }}{{ group_index }}_{{ sub_index }}_{{ post_index }}" class="collapse">
+                              <ul class="list-group heading-list">
+                                {% for snippet in headings offset: 1 %}
+                                  {% assign heading_id = snippet | split: '"' | first %}
+                                  {% assign heading_text = snippet | split: '</h2>' | first | split: '>' | last | strip_html %}
+                                  <li class="list-group-item heading-item p-0">
+                                    <a href="{{ post.url | relative_url }}#{{ heading_id }}" class="heading-link d-block px-2 py-2">
+                                      {{ heading_text }}
+                                    </a>
+                                  </li>
+                                {% endfor %}
+                              </ul>
+                            </div>
+                          {% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+
+            {% for post in direct_posts %}
+              {% assign post_index = post.url | slugify %}
+              {% assign headings = post.content | split: '<h2 id="' %}
+              {% assign headings_size = headings.size | minus: 1 %}
+
+              <li class="list-group-item post-item p-0">
+                <div class="d-flex justify-content-between align-items-center px-2 py-2">
+                  <a href="{{ post.url | relative_url }}" class="post-link d-flex align-items-center mx-2">
+                    {% if post.image %}
+                      {% assign post_image_path = post.image.path | default: post.image %}
+                      {%- capture post_image_url -%}
+                        {% include media-url.html src=post_image_path subpath=post.media_subpath %}
+                      {%- endcapture -%}
+                      <img src="{{ post_image_url | strip }}" alt="" class="post-thumb me-2">
+                    {% else %}
+                      <i class="far fa-file-lines fa-fw me-2"></i>
+                    {% endif %}
+                    {{ post.title }}
+                  </a>
+
+                  {% if headings_size > 0 %}
+                    <a
+                      href="#{{ POST_PREFIX }}{{ group_index }}_{{ post_index }}"
+                      data-bs-toggle="collapse"
+                      aria-expanded="false"
+                      aria-label="post-{{ post_index }}-trigger"
+                      class="category-trigger hide-border-bottom rotate"
+                    >
+                      <i class="fas fa-fw fa-angle-down"></i>
+                    </a>
+                  {% endif %}
+                </div>
+
+                {% if headings_size > 0 %}
+                  <div id="{{ POST_PREFIX }}{{ group_index }}_{{ post_index }}" class="collapse">
+                    <ul class="list-group heading-list">
+                      {% for snippet in headings offset: 1 %}
+                        {% assign heading_id = snippet | split: '"' | first %}
+                        {% assign heading_text = snippet | split: '</h2>' | first | split: '>' | last | strip_html %}
+                        <li class="list-group-item heading-item p-0">
+                          <a href="{{ post.url | relative_url }}#{{ heading_id }}" class="heading-link d-block px-2 py-2">
+                            {{ heading_text }}
+                          </a>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>

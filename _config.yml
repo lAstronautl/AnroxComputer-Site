@@ -35,7 +35,7 @@ description: >- # used by seo meta and the atom feed
 url: "https://lastronautl.github.io"
 
 github:
-  username: https://github.com/StarHorizon14/StarHorizon.git
+  username: StarHorizon14/StarHorizon.git
 
 # ↑ --------------------------
 # The end of `jekyll-seo-tag` settings

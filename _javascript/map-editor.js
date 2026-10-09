@@ -30,9 +30,8 @@ function buildYaml(imagePath, zones) {
 
 function init() {
   const fileInput = document.getElementById('map-editor-file');
-  const img = document.getElementById('map-editor-img');
+  const wrap = document.getElementById('map-editor-canvas-wrap');
   const svg = document.getElementById('map-editor-svg');
-  const wrap = img?.parentElement;
   const finishBtn = document.getElementById('map-editor-finish');
   const undoBtn = document.getElementById('map-editor-undo');
   const clearBtn = document.getElementById('map-editor-clear');
@@ -40,7 +39,20 @@ function init() {
   const zonesList = document.getElementById('map-editor-zones');
   const output = document.getElementById('map-editor-output');
 
-  if (!fileInput || !img || !svg || !wrap) return;
+  if (!fileInput || !wrap || !svg) return;
+
+  const viewport = document.createElement('div');
+  viewport.id = 'map-editor-viewport';
+  viewport.className = 'map-editor-viewport';
+  wrap.appendChild(viewport);
+
+  const img = document.createElement('img');
+  img.id = 'map-editor-img';
+  img.className = 'map-editor-preview-img';
+  img.alt = 'Загруженная карта';
+  img.hidden = true;
+  viewport.appendChild(img);
+  viewport.appendChild(svg);
 
   let imagePath = '';
   let currentPoints = [];
@@ -48,11 +60,44 @@ function init() {
 
   const NS = 'http://www.w3.org/2000/svg';
 
+  // Zoom/pan state: scale + translate (in CSS pixels) applied to `viewport`.
+  let zoomScale = 1;
+  let panX = 0;
+  let panY = 0;
+  const MIN_SCALE = 0.25;
+  const MAX_SCALE = 8;
+
+  function applyTransform() {
+    viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+  }
+
   function svgPointFromEvent(event) {
-    const rect = wrap.getBoundingClientRect();
+    const rect = viewport.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 100;
     const y = ((event.clientY - rect.top) / rect.height) * 100;
     return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
+  }
+
+  function zoomAt(clientX, clientY, factor) {
+    const rect = wrap.getBoundingClientRect();
+    const prevScale = zoomScale;
+    const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, zoomScale * factor));
+    if (nextScale === prevScale) return;
+
+    // Keep the point under the cursor stationary while zooming.
+    const originX = clientX - rect.left;
+    const originY = clientY - rect.top;
+    panX = originX - ((originX - panX) / prevScale) * nextScale;
+    panY = originY - ((originY - panY) / prevScale) * nextScale;
+    zoomScale = nextScale;
+    applyTransform();
+  }
+
+  function resetView() {
+    zoomScale = 1;
+    panX = 0;
+    panY = 0;
+    applyTransform();
   }
 
   function renderDraftPolygon() {
@@ -149,12 +194,53 @@ function init() {
     reader.onload = () => {
       img.src = reader.result;
       img.hidden = false;
+      resetView();
     };
     reader.readAsDataURL(file);
   });
 
+  // Mouse-wheel zoom, centered on the cursor.
+  wrap.addEventListener(
+    'wheel',
+    (event) => {
+      if (img.hidden) return;
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+      zoomAt(event.clientX, event.clientY, factor);
+    },
+    { passive: false }
+  );
+
+  // Right-mouse-button drag to pan; left button still places polygon points.
+  let isPanning = false;
+  let panStart = { x: 0, y: 0 };
+  let panOrigin = { x: 0, y: 0 };
+
+  wrap.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  wrap.addEventListener('mousedown', (event) => {
+    if (event.button !== 2 || img.hidden) return;
+    isPanning = true;
+    panStart = { x: event.clientX, y: event.clientY };
+    panOrigin = { x: panX, y: panY };
+    wrap.classList.add('is-panning');
+  });
+
+  window.addEventListener('mousemove', (event) => {
+    if (!isPanning) return;
+    panX = panOrigin.x + (event.clientX - panStart.x);
+    panY = panOrigin.y + (event.clientY - panStart.y);
+    applyTransform();
+  });
+
+  window.addEventListener('mouseup', (event) => {
+    if (event.button !== 2 || !isPanning) return;
+    isPanning = false;
+    wrap.classList.remove('is-panning');
+  });
+
   wrap.addEventListener('click', (event) => {
-    if (img.hidden) return;
+    if (img.hidden || event.button !== 0) return;
     currentPoints.push(svgPointFromEvent(event));
     renderDraftPolygon();
     finishBtn.disabled = currentPoints.length < 3;

@@ -90,6 +90,11 @@ main {
     -o-object-fit: cover;
     object-fit: contain;
 
+    image-rendering: auto;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: -webkit-optimize-contrast;
+
     @extend %rounded;
 
     @at-root #post-list & {
@@ -448,10 +453,19 @@ mjx-container {
 
   @include bp.lg {
     margin-left: v.$sidebar-width;
+    transition: margin-left 0.3s ease;
+
+    [sidebar-collapsed] & {
+      margin-left: 4.5rem;
+    }
   }
 
   @include bp.xxxl {
     margin-left: v.$sidebar-width-large;
+
+    [sidebar-collapsed] & {
+      margin-left: 4.5rem;
+    }
   }
 
   > .container {
@@ -482,8 +496,13 @@ mjx-container {
 
     @include bp.xxxl {
       max-width: v.$main-content-max-width;
+      transition: max-width 0.3s ease;
 
       @include mx.pl-pr(1.75rem, true);
+
+      [sidebar-collapsed] & {
+        max-width: calc(#{v.$main-content-max-width} + #{v.$sidebar-width-large} - 4.5rem);
+      }
     }
   }
 }

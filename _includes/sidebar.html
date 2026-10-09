@@ -1,6 +1,16 @@
 <!-- The Side Bar -->
 
 <aside aria-label="Sidebar" id="sidebar" class="d-flex flex-column align-items-end">
+  <button
+    type="button"
+    id="sidebar-collapse-trigger"
+    class="sidebar-collapse-trigger"
+    aria-label="Collapse sidebar"
+    aria-expanded="true"
+  >
+    <i class="fas fa-angles-left"></i>
+  </button>
+
   <header class="profile-wrapper">
     <a href="{{ '/' | relative_url }}" id="avatar" class="rounded-circle">
       {%- if site.avatar != empty and site.avatar -%}

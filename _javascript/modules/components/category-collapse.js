@@ -1,36 +1,37 @@
 /**
  * Tab 'Categories' expand/close effect.
+ * Works for every nesting level (category / sub-category / post / heading):
+ * each `.collapse` panel is toggled by a trigger whose `href="#<panel-id>"`
+ * points back to it, so the trigger is found by that relationship instead
+ * of a fixed id-prefix scheme.
  */
 
 import 'bootstrap/js/src/collapse.js';
 
-const childPrefix = 'l_';
-const parentPrefix = 'h_';
-const children = document.getElementsByClassName('collapse');
+const panels = document.getElementsByClassName('collapse');
 
 export function categoryCollapse() {
-  [...children].forEach((elem) => {
-    const id = parentPrefix + elem.id.substring(childPrefix.length);
-    const parent = document.getElementById(id);
+  [...panels].forEach((elem) => {
+    const trigger = document.querySelector(`a[href="#${elem.id}"]`);
+    if (!trigger) return;
 
-    // collapse sub-categories
+    const parent = trigger.closest('.card-header, .d-flex');
+    const arrow = trigger.querySelector('.fas.fa-angle-down');
+    const folderOpen = parent ? parent.querySelector('.far.fa-folder-open') : null;
+    const folderClosed = parent ? parent.querySelector('.far.fa-folder') : null;
+
+    // collapse
     elem.addEventListener('hide.bs.collapse', () => {
-      if (parent) {
-        parent.querySelector('.far.fa-folder-open').className =
-          'far fa-folder fa-fw';
-        parent.querySelector('.fas.fa-angle-down').classList.add('rotate');
-        parent.classList.remove('hide-border-bottom');
-      }
+      if (folderOpen) folderOpen.className = 'far fa-folder fa-fw';
+      if (arrow) arrow.classList.add('rotate');
+      if (parent) parent.classList.remove('hide-border-bottom');
     });
 
-    // expand sub-categories
+    // expand
     elem.addEventListener('show.bs.collapse', () => {
-      if (parent) {
-        parent.querySelector('.far.fa-folder').className =
-          'far fa-folder-open fa-fw';
-        parent.querySelector('.fas.fa-angle-down').classList.remove('rotate');
-        parent.classList.add('hide-border-bottom');
-      }
+      if (folderClosed) folderClosed.className = 'far fa-folder-open fa-fw';
+      if (arrow) arrow.classList.remove('rotate');
+      if (parent) parent.classList.add('hide-border-bottom');
     });
   });
 }
