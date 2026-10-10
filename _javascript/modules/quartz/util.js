@@ -1,5 +1,5 @@
 export function registerEscapeHandler(outsideContainer, cb) {
-  if (!outsideContainer) return;
+  if (!outsideContainer) return () => {};
 
   function click(e) {
     if (e.target !== outsideContainer) return;
@@ -15,9 +15,17 @@ export function registerEscapeHandler(outsideContainer, cb) {
   }
 
   outsideContainer.addEventListener('click', click);
-  window.addCleanup(() => outsideContainer.removeEventListener('click', click));
   document.addEventListener('keydown', esc);
-  window.addCleanup(() => document.removeEventListener('keydown', esc));
+
+  // Caller owns the lifetime: call the returned function when the container is
+  // closed so listeners do not pile up on every open.
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    outsideContainer.removeEventListener('click', click);
+    document.removeEventListener('keydown', esc);
+  };
 }
 
 export function removeAllChildren(node) {

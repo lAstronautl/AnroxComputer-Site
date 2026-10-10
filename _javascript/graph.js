@@ -76,6 +76,9 @@ function initGraphSettingsMenus() {
           if (key === 'showGraphTag') {
             // Stored internally as `hideGraphTag`
             input.checked = cfg.hideGraphTag !== true;
+          } else if (key === 'focusOnHover' || key === 'enableRadial') {
+            // opt-in flags: absent in cfg means off
+            input.checked = cfg[key] === true;
           } else {
             input.checked = cfg[key] !== false;
           }

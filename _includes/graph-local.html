@@ -3,11 +3,11 @@
 
   {% assign local_depth = site.graph.local_depth | default: 1 %}
   {% assign local_cfg = site.graph.local_cfg
-    | default: '{"drag":true,"zoom":true,"depth":DEPTH,"scale":1.1,"repelForce":0.5,"centerForce":0.3,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":false,"enableRadial":false}'
+    | default: '{"drag":true,"zoom":true,"depth":DEPTH,"scale":0.5,"repelForce":0.5,"centerForce":0.3,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":false,"enableRadial":false}'
     | replace: 'DEPTH', local_depth
   %}
   {% assign global_cfg = site.graph.global_cfg
-    | default: '{"drag":true,"zoom":true,"depth":-1,"scale":0.9,"repelForce":0.5,"centerForce":0.2,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":true,"enableRadial":true}'
+    | default: '{"drag":true,"zoom":true,"depth":-1,"scale":0.5,"repelForce":0.5,"centerForce":0.2,"linkDistance":30,"fontSize":0.6,"opacityScale":1,"removeTags":[],"showTags":true,"focusOnHover":true,"enableRadial":true}'
   %}
 
   <section class="graph mt-4">
@@ -44,6 +44,18 @@
           <label class="graph-settings-check">
             <input type="checkbox" data-graph-setting="showGraphTag">
             Show #graph
+          </label>
+        </div>
+        <div class="graph-settings-row">
+          <label class="graph-settings-check">
+            <input type="checkbox" data-graph-setting="focusOnHover">
+            Focus on hover
+          </label>
+        </div>
+        <div class="graph-settings-row">
+          <label class="graph-settings-check">
+            <input type="checkbox" data-graph-setting="enableRadial">
+            Radial layout
           </label>
         </div>
       </div>
@@ -108,6 +120,18 @@
           <label class="graph-settings-check">
             <input type="checkbox" data-graph-setting="showGraphTag">
             Show #graph
+          </label>
+        </div>
+        <div class="graph-settings-row">
+          <label class="graph-settings-check">
+            <input type="checkbox" data-graph-setting="focusOnHover">
+            Focus on hover
+          </label>
+        </div>
+        <div class="graph-settings-row">
+          <label class="graph-settings-check">
+            <input type="checkbox" data-graph-setting="enableRadial">
+            Radial layout
           </label>
         </div>
       </div>
