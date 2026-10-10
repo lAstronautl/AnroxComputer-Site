@@ -4,10 +4,15 @@ require "json"
 
 # Convert wiki-style links such as [[Post Title]] into Markdown links and
 # image embeds such as ![[image.png]] into Markdown images.
+#
+# Interactive maps (front matter `interactive_map:`) are embedded with
+#   [[map]]               the map of the current post
+#   [[Post Title.map]]    the map of another post
 module WikiLinks
   DATE_PREFIX = /\A\d{2,4}-\d{1,2}-\d{1,2}-/
   IMAGE_EXT = /\.(?:avif|gif|jpe?g|png|svg|webp)\z/i
   CANVAS_EXT = /\.canvas\z/i
+  MAP_EXT = /\.map\z/i
   WIKI_IMAGE = /!\[\[([^\]\n]+)\]\]/
   WIKI_LINK = /(?<!!)\[\[([^\]\n]+)\]\]/
 
@@ -126,6 +131,28 @@ module WikiLinks
     nil
   end
 
+  # Expands to the interactive-map include. It is emitted as a Liquid tag so
+  # that urls and escaping are handled by the same include as before.
+  def map_embed(doc, target, index)
+    target = target.strip
+
+    if target.casecmp?("map")
+      return unless doc.data["interactive_map"]
+
+      return "\n\n{% include embed/interactive-map.html " \
+        "src=page.interactive_map.image zones=page.interactive_map.zones %}\n\n"
+    end
+
+    return unless target.match?(MAP_EXT)
+
+    post = index[normalize(target.sub(MAP_EXT, ""))]
+    return unless post&.data&.dig("interactive_map")
+
+    "\n\n{% assign map_post = site.posts | where: \"url\", \"#{post.url}\" | first %}" \
+      "{% include embed/interactive-map.html " \
+      "src=map_post.interactive_map.image zones=map_post.interactive_map.zones %}\n\n"
+  end
+
   def canvas_source(site, target)
     target = target.strip
     return unless target.match?(CANVAS_EXT)
@@ -207,6 +234,9 @@ Jekyll::Hooks.register [:posts, :pages, :documents], :pre_render do |doc|
   doc.content = doc.content.gsub(WikiLinks::WIKI_LINK) do
     text = Regexp.last_match(1).strip
     target, alias_text = text.split("|", 2)
+
+    map = WikiLinks.map_embed(doc, target, index)
+    next map if map
 
     canvas = WikiLinks.canvas_embed(doc.site, target)
     next canvas if canvas
