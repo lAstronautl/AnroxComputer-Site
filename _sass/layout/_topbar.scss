@@ -19,6 +19,7 @@
   @extend %btn-color;
 
   #breadcrumb {
+    margin-right: auto; /* keep search and the editor button on the right */
     font-size: 1rem;
     color: var(--text-muted-color);
     padding-left: 0.5rem;
@@ -88,4 +89,15 @@
 #editor-trigger {
   flex-shrink: 0;
   margin-left: 0.5rem;
+  text-decoration: none;
+
+  /* it is an <a>, so `%btn-color` (button i) does not reach it */
+  i {
+    color: #999999;
+  }
+
+  &:hover i,
+  &:focus-visible i {
+    color: var(--link-color);
+  }
 }

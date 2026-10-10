@@ -28,6 +28,57 @@ function buildYaml(imagePath, zones) {
   return lines.join('\n');
 }
 
+function unquote(value) {
+  const v = value.trim();
+  if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+    return v.slice(1, -1).replace(/\\(["\\])/g, '$1');
+  }
+  if (v.length >= 2 && v.startsWith('\'') && v.endsWith('\'')) {
+    return v.slice(1, -1).replace(/''/g, '\'');
+  }
+  return v;
+}
+
+function parsePoints(value) {
+  return value
+    .split(/\s+/)
+    .map((pair) => pair.split(',').map(Number))
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+    .map(([x, y]) => ({ x, y }));
+}
+
+/**
+ * Reads the YAML produced by `buildYaml` (the `interactive_map:` block of a
+ * post, or just its `zones:` list). Only this flat shape is supported.
+ */
+function parseMapYaml(text) {
+  const zones = [];
+  let image = '';
+  let current = null;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    if (line.startsWith('- ')) {
+      current = { points: [], title: '', text: '', link: '' };
+      zones.push(current);
+      line = line.slice(2).trim();
+    }
+
+    const match = line.match(/^(image|points|title|text|link):\s*(.*)$/);
+    if (!match) continue;
+
+    const [, key, raw] = match;
+    const value = unquote(raw);
+    if (key === 'image') image = value;
+    else if (current && key === 'points') current.points = parsePoints(value);
+    else if (current) current[key] = value;
+  }
+
+  return { image, zones: zones.filter((zone) => zone.points.length >= 3) };
+}
+
 let initialized = false;
 
 export function initMapEditor() {
@@ -83,8 +134,46 @@ export function initMapEditor() {
   const MIN_SCALE = 0.25;
   const MAX_SCALE = 8;
 
+  // Point markers keep a constant on-screen size, so they stay easy to hit
+  // when zoomed out and precise when zoomed in. Re-drawn when the scale changes.
+  const DRAFT_POINT_PX = 9;
+  const SAVED_POINT_PX = 6;
+  let renderedScale = 0;
+
   function applyTransform() {
     viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+
+    if (zoomScale !== renderedScale) {
+      renderedScale = zoomScale;
+      renderDraftPolygon();
+      renderSavedZones();
+    }
+  }
+
+  // The svg is stretched over the image (viewBox 0..100, preserveAspectRatio
+  // none), so one unit is a different number of screen pixels on each axis.
+  // Convert a pixel size into per-axis svg units to get a true square.
+  function squareAt(point, px, className, attr) {
+    const w = (px * 100) / (zoomScale * (viewport.offsetWidth || 1));
+    const h = (px * 100) / (zoomScale * (viewport.offsetHeight || 1));
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', point.x - w / 2);
+    rect.setAttribute('y', point.y - h / 2);
+    rect.setAttribute('width', w);
+    rect.setAttribute('height', h);
+    rect.setAttribute('class', className);
+    for (const [key, value] of Object.entries(attr)) rect.setAttribute(key, value);
+    return rect;
+  }
+
+  function isInsideImage(event) {
+    const rect = viewport.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    );
   }
 
   function svgPointFromEvent(event) {
@@ -109,10 +198,14 @@ export function initMapEditor() {
     applyTransform();
   }
 
+  // Fit the whole image into the canvas (never upscale) and centre it.
   function resetView() {
-    zoomScale = 1;
-    panX = 0;
-    panY = 0;
+    const vw = viewport.offsetWidth;
+    const vh = viewport.offsetHeight;
+    const fit = vw > 0 && vh > 0 ? Math.min(1, wrap.clientWidth / vw, wrap.clientHeight / vh) : 1;
+    zoomScale = fit;
+    panX = (wrap.clientWidth - vw * fit) / 2;
+    panY = (wrap.clientHeight - vh * fit) / 2;
     applyTransform();
   }
 
@@ -129,13 +222,7 @@ export function initMapEditor() {
     svg.appendChild(poly);
 
     currentPoints.forEach((p) => {
-      const dot = document.createElementNS(NS, 'circle');
-      dot.setAttribute('cx', p.x);
-      dot.setAttribute('cy', p.y);
-      dot.setAttribute('r', 1);
-      dot.setAttribute('data-draft', 'true');
-      dot.setAttribute('class', 'map-editor-draft-point');
-      svg.appendChild(dot);
+      svg.appendChild(squareAt(p, DRAFT_POINT_PX, 'map-editor-draft-point', { 'data-draft': 'true' }));
     });
   }
 
@@ -149,6 +236,10 @@ export function initMapEditor() {
       poly.setAttribute('data-zone', String(index));
       poly.setAttribute('class', 'map-editor-saved-polygon');
       svg.appendChild(poly);
+
+      zone.points.forEach((p) => {
+        svg.appendChild(squareAt(p, SAVED_POINT_PX, 'map-editor-saved-point', { 'data-zone': String(index) }));
+      });
     });
   }
 
@@ -208,9 +299,9 @@ export function initMapEditor() {
     imagePath = `/assets/img/posts/${file.name}`;
     const reader = new FileReader();
     reader.onload = () => {
+      img.onload = resetView; // size is only known once the image is decoded
       img.src = reader.result;
       img.hidden = false;
-      resetView();
     };
     reader.readAsDataURL(file);
   });
@@ -262,7 +353,7 @@ export function initMapEditor() {
   });
 
   wrap.addEventListener('click', (event) => {
-    if (img.hidden || event.button !== 0) return;
+    if (img.hidden || event.button !== 0 || !isInsideImage(event)) return;
     currentPoints.push(svgPointFromEvent(event));
     renderDraftPolygon();
     finishBtn.disabled = currentPoints.length < 3;
@@ -301,6 +392,31 @@ export function initMapEditor() {
     finishBtn.disabled = true;
     undoBtn.disabled = true;
     output.value = buildYaml(imagePath, zones);
+  });
+
+  // The "Код" field is editable: paste a finished map (or tweak the YAML by
+  // hand) and the zones on the map and in the list follow. The field itself is
+  // never rewritten while it is being typed in.
+  let codeTimer = 0;
+  output.addEventListener('input', () => {
+    clearTimeout(codeTimer);
+    codeTimer = setTimeout(() => {
+      const parsed = parseMapYaml(output.value);
+      // empty or unparseable text leaves the current zones alone
+      if (output.value.trim() && parsed.zones.length === 0) return;
+
+      zones.length = 0;
+      zones.push(...parsed.zones);
+      if (parsed.image) imagePath = parsed.image;
+      currentPoints = [];
+
+      renderDraftPolygon();
+      renderSavedZones();
+      renderZonesList();
+      finishBtn.disabled = true;
+      undoBtn.disabled = true;
+      clearBtn.disabled = zones.length === 0;
+    }, 300);
   });
 
   copyBtn.addEventListener('click', () => {

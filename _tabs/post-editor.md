@@ -83,8 +83,8 @@ tags:
           <svg id="map-editor-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
         </div>
         <div class="map-editor-zones" id="map-editor-zones"></div>
-        <h3>Результат</h3>
-        <textarea id="map-editor-output" class="map-editor-output" readonly="readonly" rows="14" placeholder="YAML появится здесь после добавления зон..."></textarea>
+        <h3>Код</h3>
+        <textarea id="map-editor-output" class="map-editor-output" rows="14" spellcheck="false" placeholder="YAML появится здесь после добавления зон. Можно вставить готовый код карты (interactive_map: …) или править его прямо здесь — зоны на карте обновятся."></textarea>
         <div class="map-editor-controls">
           <button type="button" id="map-editor-copy">Скопировать YAML</button>
           <button type="button" id="pe-map-insert">Вставить YAML в текст поста</button>

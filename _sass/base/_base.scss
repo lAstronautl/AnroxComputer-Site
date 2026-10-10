@@ -90,9 +90,10 @@ main {
     -o-object-fit: cover;
     object-fit: contain;
     image-rendering: auto;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
-    image-rendering: pixelated;
-    image-rendering: -webkit-optimize-contrast;
+    image-rendering: pixelated; /* keep last: Chrome/Safari/Firefox hard pixel edges */
 
     @extend %rounded;
 

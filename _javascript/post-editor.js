@@ -264,7 +264,7 @@ function init() {
     currentPath = null;
     currentSha = null;
     filenameInput.value = '_posts/Новый-пост.md';
-    contentArea.value = `---\ntitle: Новый пост\nnumber: 1\ncategories:\n  - Лор\ntags:\n  - graph\n---\n\n`;
+    contentArea.value = '---\ntitle: Новый пост\nnumber: 1\ncategories:\n  - Лор\ntags:\n  - graph\n---\n\n';
     commitMessageInput.value = 'Новый пост';
     saveBtn.disabled = false;
     renderPostList();

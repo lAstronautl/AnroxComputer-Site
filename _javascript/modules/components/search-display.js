@@ -7,6 +7,7 @@ const btnSearchTrigger = document.getElementById('search-trigger');
 const btnCancel = document.getElementById('search-cancel');
 const content = document.querySelectorAll('#main-wrapper>.container>.row');
 const topbarTitle = document.getElementById('topbar-title');
+const editorTrigger = document.getElementById('editor-trigger');
 const search = document.getElementById('search');
 const resultWrapper = document.getElementById('search-result-wrapper');
 const results = document.getElementById('search-results');
@@ -25,6 +26,7 @@ class MobileSearchBar {
     btnSbTrigger.classList.add(UNLOADED);
     topbarTitle.classList.add(UNLOADED);
     btnSearchTrigger.classList.add(UNLOADED);
+    editorTrigger?.classList.add(UNLOADED);
     search.classList.add(FLEX);
     btnCancel.classList.add(LOADED);
   }
@@ -35,6 +37,7 @@ class MobileSearchBar {
     btnSbTrigger.classList.remove(UNLOADED);
     topbarTitle.classList.remove(UNLOADED);
     btnSearchTrigger.classList.remove(UNLOADED);
+    editorTrigger?.classList.remove(UNLOADED);
   }
 }
 
