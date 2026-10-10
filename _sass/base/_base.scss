@@ -89,11 +89,6 @@ main {
     height: 100%;
     -o-object-fit: cover;
     object-fit: contain;
-    image-rendering: auto;
-    image-rendering: -webkit-crisp-edges;
-    image-rendering: -moz-crisp-edges;
-    image-rendering: crisp-edges;
-    image-rendering: pixelated; /* keep last: Chrome/Safari/Firefox hard pixel edges */
 
     @extend %rounded;
 
@@ -523,4 +518,13 @@ mjx-container {
   > :not(script) {
     margin-top: 3rem;
   }
+}
+
+/* Set by pixel-art.js only while an image is scaled UP (small pixel art).
+   Downscaled pictures keep smooth scaling so thin lines do not vanish. */
+img.pixelated {
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated; /* keep last */
 }
