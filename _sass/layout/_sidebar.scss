@@ -56,7 +56,7 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
     height: 2rem;
     padding: 0;
     border: 1px solid var(--sidebar-border-color);
-    border-radius: 50%;
+    border-radius: 0.4rem;
     background: var(--sidebar-bg);
     color: var(--sidebar-muted-color);
     cursor: pointer;
@@ -79,10 +79,16 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
     [sidebar-collapsed] & {
       width: 4.5rem;
 
-      .site-title,
-      .site-subtitle,
+      .site-title {
+        display: none !important;
+      }
+
+      .site-subtitle {
+        display: none !important;
+      }
+
       .nav-link span {
-        display: none;
+        display: none !important;
       }
 
       .profile-wrapper {
@@ -98,20 +104,22 @@ $sidebar-display: 'sidebar-display'; /* the attribute for sidebar display */
       }
 
       li.nav-item {
-        padding-left: 0;
-        padding-right: 0;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
       }
 
       a.nav-link {
         justify-content: center;
 
         i {
-          margin-right: 0;
+          margin-right: 0 !important;
         }
       }
 
       .sidebar-bottom {
         justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
 
         .nav-link {
           justify-content: center;
