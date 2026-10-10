@@ -27,6 +27,7 @@
   "dependencies": {
     "@popperjs/core": "^2.11.8",
     "@tweenjs/tween.js": "^25.0.0",
+    "@wterm/dom": "^0.5.4",
     "bootstrap": "^5.3.8",
     "d3": "^7.9.0",
     "pixi.js": "^8.18.1"

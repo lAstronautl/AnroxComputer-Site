@@ -92,6 +92,7 @@ export default [
   build('misc'),
   build('map-editor'),
   build('post-editor'),
+  build('console', { inlineDynamicImports: true }),
   build('theme', { outputName: 'Theme' }),
   build('app', { src: SRC_PWA, jekyll: true }),
   build('sw', { src: SRC_PWA, jekyll: true })

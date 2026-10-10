@@ -1,0 +1,91 @@
+@use 'wterm';
+
+/* Role-play console: wterm terminal in a red-phosphor CRT frame */
+
+.rp-console-hint {
+  color: var(--text-muted-color);
+  font-size: 0.9rem;
+}
+
+.rp-console {
+  position: relative;
+  margin: 1rem 0 2rem;
+  border: 1px solid var(--main-border-color, #3a0000);
+  border-radius: 0.6rem;
+  background: #050000;
+  box-shadow: 0 0 0 1px #1a0000 inset, 0 0 24px rgb(158 0 0 / 25%);
+  overflow: hidden;
+
+  /* scanlines + vignette over the whole screen, clicks pass through */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(to bottom, rgb(0 0 0 / 0%) 0, rgb(0 0 0 / 0%) 2px, rgb(0 0 0 / 22%) 3px),
+      radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 60%, rgb(0 0 0 / 45%) 100%);
+  }
+
+  .rp-console-screen {
+    height: min(68vh, 620px);
+    min-height: 360px;
+  }
+
+  .wterm {
+    --term-bg: #050000;
+    --term-fg: #ff6b6b;
+    --term-cursor: #ff6b6b;
+    --term-font-size: 15px;
+    --term-line-height: 1.25;
+    --term-row-height: 19px;
+    --term-color-0: #050000;
+    --term-color-1: #ff3b3b;
+    --term-color-2: #5dff95;
+    --term-color-3: #ffb000;
+    --term-color-4: #6fa8ff;
+    --term-color-5: #ff7bd0;
+    --term-color-6: #5cf0e0;
+    --term-color-7: #ffb3b3;
+    --term-color-8: #b45a5a;
+    --term-color-9: #ff6b6b;
+    --term-color-10: #8dffb4;
+    --term-color-11: #ffd36b;
+    --term-color-12: #9cc2ff;
+    --term-color-13: #ffa3dd;
+    --term-color-14: #8ff5ea;
+    --term-color-15: #fff1f1;
+
+    height: 100%;
+    box-sizing: border-box;
+    border-radius: 0;
+    box-shadow: none;
+    text-shadow: 0 0 6px rgb(255 59 59 / 55%);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wterm {
+      animation: rp-console-flicker 6s infinite steps(1);
+    }
+  }
+}
+
+@keyframes rp-console-flicker {
+  0%,
+  96%,
+  100% {
+    opacity: 1;
+  }
+
+  97% {
+    opacity: 0.93;
+  }
+
+  98% {
+    opacity: 1;
+  }
+
+  99% {
+    opacity: 0.96;
+  }
+}
