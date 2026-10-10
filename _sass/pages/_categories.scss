@@ -56,14 +56,6 @@ $indent-step: 0.75rem; /* one nesting level: category(0) > sub-category(1) > pos
     }
   }
 
-  /* Sub-categories: indent the whole row and mark it with a left accent bar */
-  &.card > .collapse > .list-group > .list-group-item {
-    margin-left: $indent-step * 1;
-    width: calc(100% - #{$indent-step * 1});
-    border-left: 2px solid var(--categories-border);
-    background-color: var(--card-header-bg);
-  }
-
   .post-item {
     margin-left: $indent-step * 2;
     width: calc(100% - #{$indent-step * 2});
@@ -92,6 +84,18 @@ $indent-step: 0.75rem; /* one nesting level: category(0) > sub-category(1) > pos
       image-rendering: pixelated;
       image-rendering: -webkit-optimize-contrast;
     }
+  }
+
+  /* Rows placed directly in a top-level category (sub-categories and direct posts).
+     A standalone class on purpose: a `.card > .collapse > ...` selector stops matching
+     while Bootstrap swaps `.collapse` for `.collapsing`, which made rows jump at the end
+     of the animation. Specificity must beat the theme's
+     `html[data-mode] .categories .list-group-item` (border-left: none, card-bg). */
+  &.card .list-group > .list-group-item.top-row {
+    margin-left: $indent-step * 1;
+    width: calc(100% - #{$indent-step * 1});
+    border-left: 2px solid var(--categories-border);
+    background-color: var(--card-header-bg);
   }
 
   .heading-list {
