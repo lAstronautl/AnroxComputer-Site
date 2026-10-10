@@ -13,7 +13,7 @@ tabs:
   home: Главная
   categories: Категории
   tags: Теги
-  archives: Архив
+  archives: История
 
 # the text displayed in the search bar & search results
 search:

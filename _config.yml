@@ -37,6 +37,15 @@ url: "https://lastronautl.github.io"
 github:
   username: StarHorizon14/StarHorizon.git
 
+# In-browser post/map editor (see _tabs/post-editor.md).
+# `repo` is the GitHub repo that hosts THIS site (owner/name), used by the
+# editor's GitHub Contents API calls — not the same as `github.username` above,
+# which points at an unrelated repo. `branch` is the target branch to commit to;
+# intentionally kept out of the editor UI and configured here instead.
+post_editor:
+  repo: lAstronautl/AnroxComputer-Site
+  branch: master
+
 # ↑ --------------------------
 # The end of `jekyll-seo-tag` settings
 

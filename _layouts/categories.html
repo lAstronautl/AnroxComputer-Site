@@ -46,6 +46,8 @@ layout: page
     {% endfor %}
     {% assign direct_posts_size = direct_posts | size %}
 
+    {% assign top_posts_size = posts_of_category | size %}
+
     <div class="card categories">
       <!-- top-category -->
       <div
@@ -58,7 +60,6 @@ layout: page
           <span class="mx-2">{{ category_name }}</span>
 
           <!-- content count -->
-          {% assign top_posts_size = site.categories[category_name] | size %}
           <span class="text-muted small font-weight-light">
             {% if sub_categories_size > 0 %}
               {{ sub_categories_size }}
@@ -117,7 +118,7 @@ layout: page
           <ul class="list-group">
             {% for sub_category in sub_categories %}
               {% assign sub_index = sub_category | slugify %}
-              {% assign sub_posts = site.categories[sub_category] %}
+              {% assign sub_posts = site.categories[sub_category] | where_exp: 'item', 'item.hidden != true' %}
               {% assign sub_posts_size = sub_posts | size %}
 
               <li class="list-group-item top-row p-0">

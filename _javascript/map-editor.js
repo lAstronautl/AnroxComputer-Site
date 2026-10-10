@@ -28,7 +28,11 @@ function buildYaml(imagePath, zones) {
   return lines.join('\n');
 }
 
-function init() {
+let initialized = false;
+
+export function initMapEditor() {
+  if (initialized) return;
+
   const fileInput = document.getElementById('map-editor-file');
   const wrap = document.getElementById('map-editor-canvas-wrap');
   const svg = document.getElementById('map-editor-svg');
@@ -41,6 +45,15 @@ function init() {
 
   if (!fileInput || !wrap || !svg) return;
 
+  initialized = true;
+
+  // Prevent native browser image-drag-ghost and text-selection from
+  // interfering with the click-to-place-point / right-click-pan interactions.
+  wrap.style.userSelect = 'none';
+  wrap.style.webkitUserSelect = 'none';
+  wrap.addEventListener('dragstart', (event) => event.preventDefault());
+  wrap.addEventListener('selectstart', (event) => event.preventDefault());
+
   const viewport = document.createElement('div');
   viewport.id = 'map-editor-viewport';
   viewport.className = 'map-editor-viewport';
@@ -51,6 +64,9 @@ function init() {
   img.className = 'map-editor-preview-img';
   img.alt = 'Загруженная карта';
   img.hidden = true;
+  img.draggable = false;
+  img.style.webkitUserDrag = 'none';
+  img.style.userSelect = 'none';
   viewport.appendChild(img);
   viewport.appendChild(svg);
 
@@ -219,7 +235,13 @@ function init() {
   wrap.addEventListener('contextmenu', (event) => event.preventDefault());
 
   wrap.addEventListener('mousedown', (event) => {
-    if (event.button !== 2 || img.hidden) return;
+    if (img.hidden) return;
+
+    // Stop native drag/selection from starting regardless of which button
+    // triggered it (left-click placing a point, right-click panning).
+    event.preventDefault();
+
+    if (event.button !== 2) return;
     isPanning = true;
     panStart = { x: event.clientX, y: event.clientY };
     panOrigin = { x: panX, y: panY };
@@ -288,7 +310,7 @@ function init() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', initMapEditor);
 } else {
-  init();
+  initMapEditor();
 }

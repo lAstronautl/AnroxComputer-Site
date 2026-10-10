@@ -75,5 +75,15 @@
     <button type="button" class="btn btn-link text-decoration-none" id="search-cancel">
       {{- site.data.locales[include.lang].search.cancel -}}
     </button>
+
+    <a
+      href="{{ '/post-editor/' | relative_url }}"
+      id="editor-trigger"
+      class="btn btn-link"
+      aria-label="Редактор"
+      title="Редактор"
+    >
+      <i class="fas fa-file-pen fa-fw"></i>
+    </a>
   </div>
 </header>

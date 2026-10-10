@@ -84,3 +84,8 @@
     display: block;
   }
 }
+
+#editor-trigger {
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}

@@ -8,6 +8,7 @@ layout: page
 <div id="archives" class="pl-xl-3">
   <ul class="list-unstyled">
     {% for post in site.posts %}
+      {% if post.hidden %}{% continue %}{% endif %}
       <li>
         {% if post.number %}
           <span class="date small text-muted me-1">#{{ post.number }}</span>

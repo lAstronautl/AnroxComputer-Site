@@ -46,6 +46,18 @@
       }
     }
 
+    /* The actual post-list card markup puts the thumbnail in `.col-md-5 img`
+       directly, without a `.preview-img` wrapper — apply the same crisp
+       rendering there so small pixel-art images aren't blurred on upscale. */
+    .col-md-5 > img {
+      @extend %img-radius;
+
+      image-rendering: auto;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: -webkit-optimize-contrast;
+    }
+
     .card-body {
       height: 100%;
       padding: 1rem;

@@ -62,6 +62,13 @@ async function listPosts(session) {
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 }
 
+function getConfig(root) {
+  return {
+    repo: root?.dataset.repo || '',
+    branch: root?.dataset.branch || 'master'
+  };
+}
+
 async function getFile(session, path) {
   const res = await api(
     session,
@@ -102,14 +109,19 @@ function renderMarkdownPreview(text) {
 }
 
 function init() {
+  const root = document.getElementById('post-editor');
   const authSection = document.getElementById('pe-auth');
   const workspace = document.getElementById('pe-workspace');
   const tokenInput = document.getElementById('pe-token');
   const repoInput = document.getElementById('pe-repo');
-  const branchInput = document.getElementById('pe-branch');
   const connectBtn = document.getElementById('pe-connect');
   const disconnectBtn = document.getElementById('pe-disconnect');
   const authStatus = document.getElementById('pe-auth-status');
+
+  const tabPostBtn = document.getElementById('pe-tab-post');
+  const tabMapBtn = document.getElementById('pe-tab-map');
+  const panelPost = document.getElementById('pe-panel-post');
+  const panelMap = document.getElementById('pe-panel-map');
 
   const postList = document.getElementById('pe-post-list');
   const filterInput = document.getElementById('pe-filter');
@@ -122,17 +134,29 @@ function init() {
   const saveBtn = document.getElementById('pe-save');
   const saveStatus = document.getElementById('pe-save-status');
 
-  const mapModal = document.getElementById('pe-map-modal');
   const insertMapBtn = document.getElementById('pe-insert-map');
-  const mapCloseBtn = document.getElementById('pe-map-close');
   const mapInsertBtn = document.getElementById('pe-map-insert');
 
   if (!authSection || !workspace) return;
 
+  const config = getConfig(root);
   let session = loadSession();
   let posts = [];
   let currentPath = null;
   let currentSha = null;
+
+  function switchTab(tab) {
+    const isPost = tab === 'post';
+    panelPost.hidden = !isPost;
+    panelMap.hidden = isPost;
+    tabPostBtn.classList.toggle('is-active', isPost);
+    tabMapBtn.classList.toggle('is-active', !isPost);
+    tabPostBtn.setAttribute('aria-selected', String(isPost));
+    tabMapBtn.setAttribute('aria-selected', String(!isPost));
+  }
+
+  tabPostBtn.addEventListener('click', () => switchTab('post'));
+  tabMapBtn.addEventListener('click', () => switchTab('map'));
 
   function setStatus(el, text, isError = false) {
     el.textContent = text;
@@ -145,8 +169,7 @@ function init() {
     disconnectBtn.hidden = false;
     connectBtn.hidden = true;
     tokenInput.disabled = true;
-    repoInput.disabled = true;
-    branchInput.disabled = true;
+    switchTab('post');
   }
 
   function showLoggedOut() {
@@ -154,8 +177,6 @@ function init() {
     disconnectBtn.hidden = true;
     connectBtn.hidden = false;
     tokenInput.disabled = false;
-    repoInput.disabled = false;
-    branchInput.disabled = false;
   }
 
   function renderPostList() {
@@ -202,10 +223,10 @@ function init() {
 
   connectBtn.addEventListener('click', async () => {
     const token = tokenInput.value.trim();
-    const repo = repoInput.value.trim();
-    const branch = branchInput.value.trim() || 'master';
+    const repo = config.repo;
+    const branch = config.branch;
     if (!token || !repo) {
-      setStatus(authStatus, 'Укажите токен и репозиторий', true);
+      setStatus(authStatus, 'Укажите токен (репозиторий не настроен в _config.yml)', true);
       return;
     }
 
@@ -243,7 +264,7 @@ function init() {
     currentPath = null;
     currentSha = null;
     filenameInput.value = '_posts/Новый-пост.md';
-    contentArea.value = `---\ntitle: Новый пост\ndate: ${new Date().toISOString().slice(0, 19).replace('T', ' ')} +0800\ncategories:\n  - Лор\ntags:\n  - graph\n---\n\n`;
+    contentArea.value = `---\ntitle: Новый пост\nnumber: 1\ncategories:\n  - Лор\ntags:\n  - graph\n---\n\n`;
     commitMessageInput.value = 'Новый пост';
     saveBtn.disabled = false;
     renderPostList();
@@ -288,29 +309,23 @@ function init() {
   });
 
   insertMapBtn.addEventListener('click', () => {
-    mapModal.hidden = false;
-  });
-
-  mapCloseBtn.addEventListener('click', () => {
-    mapModal.hidden = true;
+    switchTab('map');
   });
 
   mapInsertBtn.addEventListener('click', () => {
-    const frame = document.getElementById('pe-map-frame');
-    const output = frame?.contentDocument?.getElementById('map-editor-output');
+    const output = document.getElementById('map-editor-output');
     if (output && output.value) {
       const cursor = contentArea.selectionStart ?? contentArea.value.length;
       contentArea.value =
         contentArea.value.slice(0, cursor) + `\n${output.value}\n` + contentArea.value.slice(cursor);
     }
-    mapModal.hidden = true;
+    switchTab('post');
   });
 
   if (session) {
     setStatus(authStatus, `Подключено: ${session.repo}@${session.branch}`);
     tokenInput.value = '';
     repoInput.value = session.repo;
-    branchInput.value = session.branch;
     showWorkspace();
     refreshPostList();
   }

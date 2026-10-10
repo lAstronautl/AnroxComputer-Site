@@ -13,128 +13,74 @@
   }
 
   $timeline-width: 4px;
-
-  %timeline {
-    content: '';
-    width: $timeline-width;
-    position: relative;
-    float: left;
-    background-color: var(--timeline-color);
-  }
-
-  .year {
-    height: 3.5rem;
-    font-size: 1.5rem;
-    position: relative;
-    left: 2px;
-    margin-left: -$timeline-width;
-
-    &::before {
-      @extend %timeline;
-
-      height: 72px;
-      left: 79px;
-      bottom: 16px;
-    }
-
-    &:first-child::before {
-      @extend %timeline;
-
-      height: 32px;
-      top: 24px;
-    }
-
-    /* Year dot */
-    &::after {
-      content: '';
-      display: inline-block;
-      position: relative;
-      border-radius: 50%;
-      width: 12px;
-      height: 12px;
-      left: 21.5px;
-      border: 3px solid;
-      background-color: var(--timeline-year-dot-color);
-      border-color: var(--timeline-node-bg);
-      box-shadow: 0 0 2px 0 #c2c6cc;
-      z-index: 1;
-    }
-  }
+  $timeline-left: 56px;
+  $dot-size: 8px;
+  $text-offset: 1.5rem; /* gap between the timeline dot and the post title */
 
   ul {
+    margin: 0;
+    padding: 0;
+
     li {
+      position: relative;
+      display: flex;
+      align-items: center;
       font-size: 1.1rem;
       line-height: 3rem;
-
-      @extend %text-ellipsis;
+      padding-left: calc(#{$timeline-left} + #{$text-offset});
 
       &:nth-child(odd) {
         background-color: var(--main-bg, #ffffff);
-        background-image: linear-gradient(
-          to left,
-          #ffffff,
-          #fbfbfb,
-          #fbfbfb,
-          #fbfbfb,
-          #ffffff
-        );
       }
 
+      /* the vertical timeline bar */
       &::before {
-        @extend %timeline;
-
+        content: '';
+        position: absolute;
         top: 0;
-        left: 77px;
-        height: 3.1rem;
+        left: $timeline-left;
+        width: $timeline-width;
+        height: 100%;
+        background-color: var(--timeline-color);
       }
-    }
 
-    &:last-child li:last-child::before {
-      height: 1.5rem;
+      &:first-child::before {
+        top: 50%;
+      }
+
+      &:last-child::before {
+        height: 50%;
+      }
+
+      /* the dot marking this entry on the timeline */
+      &::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: $timeline-left + calc($timeline-width / 2);
+        transform: translate(-50%, -50%);
+        width: $dot-size;
+        height: $dot-size;
+        border-radius: 50%;
+        background-color: var(--timeline-node-bg);
+        box-shadow: 0 0 3px 0 #c2c6cc;
+        z-index: 1;
+      }
     }
   } /* #archives ul */
 
   .date {
+    @extend %text-ellipsis;
+
+    flex-shrink: 0;
     white-space: nowrap;
-    display: inline-block;
-    position: relative;
-    right: 0.5rem;
-
-    &.month {
-      width: 1.4rem;
-      text-align: center;
-    }
-
-    &.day {
-      font-size: 85%;
-      font-family: Lato, sans-serif;
-    }
   }
 
   a {
-    /* post title in Archives */
-    margin-left: 2.5rem;
-    position: relative;
-    top: 0.1rem;
+    @extend %text-ellipsis;
 
     &:hover {
       border-bottom: none;
-    }
-
-    &::before {
-      /* the dot before post title */
-      content: '';
-      display: inline-block;
-      position: relative;
-      border-radius: 50%;
-      width: 8px;
-      height: 8px;
-      float: left;
-      top: 1.35rem;
-      left: 71px;
-      background-color: var(--timeline-node-bg);
-      box-shadow: 0 0 3px 0 #c2c6cc;
-      z-index: 1;
     }
   }
 } /* #archives */

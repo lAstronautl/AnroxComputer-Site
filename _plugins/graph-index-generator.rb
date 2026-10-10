@@ -6,6 +6,7 @@ require 'json'
 require 'fileutils'
 require 'set'
 require 'uri'
+require 'erb'
 
 module Jekyll
   class GraphIndexFile < StaticFile
@@ -47,17 +48,29 @@ module Jekyll
       known_full = nodes.keys.to_set
       known_wiki = build_wiki_index(nodes)
 
+      # Internally, slugs are kept decoded (e.g. "posts/ДКБ/index") so markdown
+      # and wiki-link matching can work against readable paths. But the index
+      # is consumed by the browser, which only ever sees percent-encoded
+      # slugs (Jekyll's `page.url` / our `data-slug` attribute never get
+      # decoded) — re-encode every slug that leaves this method so lookups
+      # on the client actually hit.
       out = {}
       nodes.each do |full_slug, doc|
-        out[full_slug] = {
-          'slug' => full_slug,
+        encoded_slug = encode_full_slug(full_slug)
+        out[encoded_slug] = {
+          'slug' => encoded_slug,
           'title' => (doc.data['title'] || full_slug),
           'tags' => Array(doc.data['tags']).map(&:to_s),
           'links' => extract_links(doc, full_slug, known_full, known_wiki, site)
+            .map { |link| encode_full_slug(link) }
         }
       end
 
       out
+    end
+
+    def encode_full_slug(full_slug)
+      full_slug.to_s.split('/').map { |segment| ERB::Util.url_encode(segment) }.join('/')
     end
 
     def collect_nodes(site, cfg)
@@ -90,6 +103,7 @@ module Jekyll
       return unless doc.data.is_a?(Hash)
       return if doc.data['sitemap'] == false
       return if doc.data['graph'] == false
+      return if doc.data['hidden'] == true
 
       posts_only = cfg.fetch('posts_only', false)
       if posts_only
