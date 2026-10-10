@@ -57,7 +57,10 @@
   position: absolute;
   left: 0;
   top: 0;
-  will-change: transform;
+
+  /* No `will-change: transform`: it makes the browser keep one raster of the
+     stage and just stretch it, so after zooming the lines break up and the
+     text goes blurry. Without it the stage is re-rastered at the current scale. */
 }
 
 .obsidian-canvas-edges,

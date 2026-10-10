@@ -128,6 +128,17 @@ function pathForEdge(edge, nodeById) {
   return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`;
 }
 
+const MIN_SCALE = 0.1;
+const MAX_SCALE = 3;
+const WHEEL_STEP = 1.1;
+const BUTTON_STEP = 1.15;
+
+// Zoom steps are exact inverses (x1.1 in, /1.1 out), so zooming in N times and
+// out N times returns to the very same view instead of drifting.
+function clampScale(scale) {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+}
+
 function applyTransform(stage, state) {
   stage.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
 }
@@ -218,7 +229,7 @@ function initViewer(viewer) {
     event.preventDefault();
     const rect = viewer.getBoundingClientRect();
     const oldScale = state.scale;
-    const nextScale = Math.min(3, Math.max(0.1, oldScale * (event.deltaY > 0 ? 0.9 : 1.1)));
+    const nextScale = clampScale(oldScale * (event.deltaY > 0 ? 1 / WHEEL_STEP : WHEEL_STEP));
     const pointerX = event.clientX - rect.left;
     const pointerY = event.clientY - rect.top;
     const worldX = (pointerX - state.x) / oldScale;
@@ -231,12 +242,12 @@ function initViewer(viewer) {
   }, { passive: false });
 
   viewer.querySelector('[data-canvas-action="zoom-out"]')?.addEventListener('click', () => {
-    state.scale = Math.max(0.1, state.scale * 0.85);
+    state.scale = clampScale(state.scale / BUTTON_STEP);
     applyTransform(stage, state);
   });
 
   viewer.querySelector('[data-canvas-action="zoom-in"]')?.addEventListener('click', () => {
-    state.scale = Math.min(3, state.scale * 1.15);
+    state.scale = clampScale(state.scale * BUTTON_STEP);
     applyTransform(stage, state);
   });
 
