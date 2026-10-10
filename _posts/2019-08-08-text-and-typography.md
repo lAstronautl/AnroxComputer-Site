@@ -209,26 +209,6 @@ The image below will toggle dark/light mode based on theme preference, notice it
 [^footnote]: The footnote source
 [^fn-nth-2]: The 2nd footnote source
 
-## Staff Cards
-
-<div class="staff-cards">
-  <div class="staff-card">
-    <div class="staff-card-icon"><i class="fas fa-user"></i></div>
-    <div class="staff-card-name">Пример должности</div>
-    <div class="staff-card-desc">Карточка сотрудника с иконкой, именем и описанием обязанностей.</div>
-  </div>
-  <div class="staff-card">
-    <div class="staff-card-icon"><i class="fas fa-user"></i></div>
-    <div class="staff-card-name">Вторая карточка</div>
-    <div class="staff-card-desc">Карточки автоматически выстраиваются в сетку.</div>
-  </div>
-  <div class="staff-card">
-    <div class="staff-card-icon"><i class="fas fa-user"></i></div>
-    <div class="staff-card-name">Третья карточка</div>
-    <div class="staff-card-desc">Используются в постах про отряды и департаменты.</div>
-  </div>
-</div>
-
 ## Wiki Links
 
 Ссылка на другой пост через двойные скобки: [[ДЗИС]].
