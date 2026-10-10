@@ -7,8 +7,7 @@ import {
   initClipboard,
   initToc,
   loadMermaid,
-  initInteractiveMaps,
-  initPixelArt
+  initInteractiveMaps
 } from './modules/components';
 import { initObsidianCanvas } from './modules/obsidian-canvas';
 
@@ -22,5 +21,4 @@ initTopbar();
 loadMermaid();
 initObsidianCanvas();
 initInteractiveMaps();
-initPixelArt();
 basic();

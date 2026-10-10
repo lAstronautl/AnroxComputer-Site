@@ -92,6 +92,23 @@
     vector-effect: non-scaling-stroke;
   }
 
+  /* points can be picked up and dragged (the svg layer itself ignores the mouse) */
+  .map-editor-draft-point,
+  .map-editor-saved-point {
+    pointer-events: all;
+    cursor: move;
+
+    &:hover {
+      stroke-width: 2px;
+    }
+
+    &.is-selected {
+      fill: #ffd400;
+      stroke: #000000;
+      stroke-width: 2px;
+    }
+  }
+
   .map-editor-zones {
     display: flex;
     flex-direction: column;

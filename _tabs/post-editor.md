@@ -78,6 +78,8 @@ tags:
           <button type="button" id="map-editor-finish" disabled>Завершить зону</button>
           <button type="button" id="map-editor-undo" disabled>Отменить точку</button>
           <button type="button" id="map-editor-clear" disabled>Очистить всё</button>
+          <button type="button" id="map-editor-add-mid" disabled title="Выберите точку кликом — новая точка появится посередине между ней и следующей">Добавить точку между</button>
+          <button type="button" id="map-editor-del-point" disabled title="Удалить выбранную точку (Delete)">Удалить точку</button>
         </div>
         <div class="map-editor-canvas-wrap" id="map-editor-canvas-wrap">
           <svg id="map-editor-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>

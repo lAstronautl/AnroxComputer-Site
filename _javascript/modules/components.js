@@ -9,4 +9,3 @@ export { modeWatcher } from './components/mode-toggle';
 export { back2top } from './components/back-to-top';
 export { loadTooltip } from './components/tooltip-loader';
 export { initInteractiveMaps } from './components/interactive-map';
-export { initPixelArt } from './components/pixel-art';

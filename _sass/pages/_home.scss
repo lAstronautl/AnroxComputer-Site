@@ -39,6 +39,11 @@
       img {
         @extend %img-radius;
 
+        image-rendering: auto;
+        image-rendering: -webkit-crisp-edges;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
+        image-rendering: pixelated; /* keep last: Chrome/Safari/Firefox hard pixel edges */
       }
     }
 
@@ -48,6 +53,10 @@
     .col-md-5 > img {
       @extend %img-radius;
 
+      image-rendering: auto;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: -webkit-optimize-contrast;
     }
 
     .card-body {

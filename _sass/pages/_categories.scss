@@ -79,6 +79,11 @@ $indent-step: 0.75rem; /* one nesting level: category(0) > sub-category(1) > pos
       object-fit: cover;
       border-radius: 0.25rem;
       flex-shrink: 0;
+      image-rendering: auto;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated; /* keep last: Chrome/Safari/Firefox hard pixel edges */
     }
   }
 

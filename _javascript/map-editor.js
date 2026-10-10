@@ -91,6 +91,8 @@ export function initMapEditor() {
   const undoBtn = document.getElementById('map-editor-undo');
   const clearBtn = document.getElementById('map-editor-clear');
   const copyBtn = document.getElementById('map-editor-copy');
+  const addMidBtn = document.getElementById('map-editor-add-mid');
+  const delPointBtn = document.getElementById('map-editor-del-point');
   const zonesList = document.getElementById('map-editor-zones');
   const output = document.getElementById('map-editor-output');
 
@@ -126,6 +128,39 @@ export function initMapEditor() {
   const zones = [];
 
   const NS = 'http://www.w3.org/2000/svg';
+
+  // Point editing: `selected` is { zone: <index> | 'draft', index } or null.
+  let selected = null;
+  let dragging = null;
+  let suppressClick = false;
+  const MIN_ZONE_POINTS = 3;
+
+  function pointsOf(zone) {
+    return zone === 'draft' ? currentPoints : zones[zone]?.points;
+  }
+
+  function isSelected(zone, index) {
+    return selected !== null && selected.zone === zone && selected.index === index;
+  }
+
+  // Highlights the selected square and enables/disables the point buttons.
+  function refreshSelection() {
+    const pts = selected ? pointsOf(selected.zone) : null;
+    if (!pts || selected.index >= pts.length) selected = null;
+
+    svg.querySelectorAll('[data-pi]').forEach((el) => {
+      const zone = el.dataset.pz === 'draft' ? 'draft' : Number(el.dataset.pz);
+      el.classList.toggle('is-selected', isSelected(zone, Number(el.dataset.pi)));
+    });
+
+    const minPoints = selected && selected.zone === 'draft' ? 1 : MIN_ZONE_POINTS;
+    if (addMidBtn) addMidBtn.disabled = !selected || pts.length < 2;
+    if (delPointBtn) delPointBtn.disabled = !selected || pts.length <= minPoints;
+  }
+
+  function syncOutput() {
+    output.value = buildYaml(imagePath, zones);
+  }
 
   // Zoom/pan state: scale + translate (in CSS pixels) applied to `viewport`.
   let zoomScale = 1;
@@ -212,7 +247,10 @@ export function initMapEditor() {
   function renderDraftPolygon() {
     svg.querySelectorAll('[data-draft]').forEach((el) => el.remove());
 
-    if (currentPoints.length === 0) return;
+    if (currentPoints.length === 0) {
+      refreshSelection();
+      return;
+    }
 
     const pointsAttr = currentPoints.map((p) => `${p.x},${p.y}`).join(' ');
     const poly = document.createElementNS(NS, 'polygon');
@@ -221,9 +259,16 @@ export function initMapEditor() {
     poly.setAttribute('class', 'map-editor-draft-polygon');
     svg.appendChild(poly);
 
-    currentPoints.forEach((p) => {
-      svg.appendChild(squareAt(p, DRAFT_POINT_PX, 'map-editor-draft-point', { 'data-draft': 'true' }));
+    currentPoints.forEach((p, i) => {
+      svg.appendChild(
+        squareAt(p, DRAFT_POINT_PX, 'map-editor-draft-point', {
+          'data-draft': 'true',
+          'data-pz': 'draft',
+          'data-pi': String(i)
+        })
+      );
     });
+    refreshSelection();
   }
 
   function renderSavedZones() {
@@ -237,10 +282,17 @@ export function initMapEditor() {
       poly.setAttribute('class', 'map-editor-saved-polygon');
       svg.appendChild(poly);
 
-      zone.points.forEach((p) => {
-        svg.appendChild(squareAt(p, SAVED_POINT_PX, 'map-editor-saved-point', { 'data-zone': String(index) }));
+      zone.points.forEach((p, i) => {
+        svg.appendChild(
+          squareAt(p, SAVED_POINT_PX, 'map-editor-saved-point', {
+            'data-zone': String(index),
+            'data-pz': String(index),
+            'data-pi': String(i)
+          })
+        );
       });
     });
+    refreshSelection();
   }
 
   function renderZonesList() {
@@ -353,12 +405,103 @@ export function initMapEditor() {
   });
 
   wrap.addEventListener('click', (event) => {
+    if (suppressClick || event.target.closest?.('[data-pi]')) return;
     if (img.hidden || event.button !== 0 || !isInsideImage(event)) return;
     currentPoints.push(svgPointFromEvent(event));
     renderDraftPolygon();
     finishBtn.disabled = currentPoints.length < 3;
     undoBtn.disabled = currentPoints.length === 0;
     clearBtn.disabled = false;
+  });
+
+  // --- editing existing points: pick one up, drag it, add/remove points ---
+  svg.addEventListener('mousedown', (event) => {
+    const el = event.target.closest?.('[data-pi]');
+    if (!el || event.button !== 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = true; // re-rendering below would turn the click into a map click
+
+    const zone = el.dataset.pz === 'draft' ? 'draft' : Number(el.dataset.pz);
+    selected = { zone, index: Number(el.dataset.pi) };
+    dragging = { zone, index: selected.index, moved: false };
+    refreshSelection();
+  });
+
+  window.addEventListener('mousemove', (event) => {
+    if (!dragging) return;
+
+    const pts = pointsOf(dragging.zone);
+    if (!pts || !pts[dragging.index]) return;
+
+    pts[dragging.index] = svgPointFromEvent(event);
+    dragging.moved = true;
+    if (dragging.zone === 'draft') renderDraftPolygon();
+    else renderSavedZones();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (dragging) {
+      if (dragging.moved && dragging.zone !== 'draft') syncOutput();
+      dragging = null;
+    }
+    setTimeout(() => {
+      suppressClick = false;
+    }, 0);
+  });
+
+  function rerenderZone(zone) {
+    if (zone === 'draft') {
+      renderDraftPolygon();
+      finishBtn.disabled = currentPoints.length < 3;
+      undoBtn.disabled = currentPoints.length === 0;
+    } else {
+      renderSavedZones();
+      syncOutput();
+    }
+  }
+
+  // New point halfway between the selected one and the next one (the zone is a
+  // closed loop, so the last point connects back to the first).
+  addMidBtn?.addEventListener('click', () => {
+    if (!selected) return;
+
+    const pts = pointsOf(selected.zone);
+    if (!pts || pts.length < 2) return;
+
+    const a = pts[selected.index];
+    const b = pts[(selected.index + 1) % pts.length];
+    pts.splice(selected.index + 1, 0, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    selected = { zone: selected.zone, index: selected.index + 1 };
+    rerenderZone(selected.zone);
+  });
+
+  function deleteSelectedPoint() {
+    if (!selected) return;
+
+    const pts = pointsOf(selected.zone);
+    const minPoints = selected.zone === 'draft' ? 1 : MIN_ZONE_POINTS;
+    if (!pts || pts.length <= minPoints) return;
+
+    pts.splice(selected.index, 1);
+    selected = { zone: selected.zone, index: Math.max(0, selected.index - 1) };
+    rerenderZone(selected.zone);
+  }
+
+  delPointBtn?.addEventListener('click', deleteSelectedPoint);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.target.closest?.('input, textarea')) return;
+    if (!selected) return;
+
+    if (event.key === 'Delete') {
+      event.preventDefault();
+      deleteSelectedPoint();
+    } else if (event.key === 'Escape') {
+      selected = null;
+      refreshSelection();
+    }
   });
 
   undoBtn.addEventListener('click', () => {
