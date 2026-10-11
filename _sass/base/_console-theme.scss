@@ -1,0 +1,74 @@
+/*
+ * Console themes (data-mode="console-red" / "console-green"): on top of the colours from
+ * themes/_console.scss they give the whole site a terminal look — monospace type, glowing text,
+ * scanlines, square corners.
+ */
+
+html[data-mode^='console'] {
+  --console-font: ui-monospace, sfmono-regular, menlo, consolas, 'Liberation Mono', monospace;
+
+  body {
+    text-shadow: 0 0 6px rgb(var(--console-glow-rgb) / 35%);
+  }
+
+  /* monospace everywhere except icon fonts */
+  :is(body, h1, h2, h3, h4, h5, h6, p, li, a, span, div, input, button, textarea, td, th, label, summary, code, pre):not(
+      [class*='fa-']
+    ) {
+    font-family: var(--console-font);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .site-title {
+    text-shadow: 0 0 9px rgb(var(--console-glow-rgb) / 55%);
+    letter-spacing: 0.02em;
+  }
+
+  /* square corners instead of the soft theme look */
+  :is(.card, .btn, input, textarea, details, .post-tag, .tag, img, pre, code, kbd, .prompt-tip, .prompt-info, .prompt-warning, .prompt-danger, #search-wrapper, .rp-console) {
+    border-radius: 2px;
+  }
+
+  /* thin glowing frame instead of shadows */
+  :is(.card, #sidebar, #topbar-wrapper) {
+    box-shadow: 0 0 0 1px rgb(var(--console-glow-rgb) / 22%);
+  }
+
+  /* scanlines + vignette over the whole page; clicks pass through */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(to bottom, rgb(0 0 0 / 0%) 0, rgb(0 0 0 / 0%) 2px, rgb(0 0 0 / 20%) 3px),
+      radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 62%, rgb(0 0 0 / 42%) 100%);
+  }
+
+  ::selection {
+    background: rgb(var(--console-glow-rgb) / 40%);
+    color: #ffffff;
+  }
+
+  /* blinking block cursor after the page title */
+  @media (prefers-reduced-motion: no-preference) {
+    .post-title::after,
+    h1.dynamic-title::after {
+      content: '█';
+      margin-left: 0.3em;
+      animation: console-cursor 1.1s steps(1) infinite;
+    }
+  }
+}
+
+@keyframes console-cursor {
+  50% {
+    opacity: 0;
+  }
+}

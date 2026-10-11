@@ -1,0 +1,383 @@
+/*
+ * Console themes: the АнКо theme (anco.scss) with the red palette swapped for a parameter map,
+ * so one stylesheet gives the red-phosphor and the green-terminal looks.
+ * Keys: bg, dim, mid, bright, accent, deep, and dim-rgb (space separated triple for the text glow).
+ */
+@use 'sass:map';
+
+$red: (
+  'bg': #050000,
+  'dim': #d65a5a,
+  'mid': #e8504f,
+  'bright': #ff6b6b,
+  'accent': #ffb000,
+  'deep': #4a0f0f,
+  'dim-rgb': '214 90 90'
+);
+$green: (
+  'bg': #010a04,
+  'dim': #3fbf72,
+  'mid': #35d97a,
+  'bright': #6dffa8,
+  'accent': #b8ffcf,
+  'deep': #0b3d20,
+  'dim-rgb': '63 191 114'
+);
+
+@mixin styles($p) {
+  color-scheme: dark;
+
+  /* Framework color */
+  --main-bg: #{map.get($p, 'bg')};
+  --console-glow-rgb: #{map.get($p, 'dim-rgb')};
+  --mask-bg: #1e2124;
+  --main-border-color: #2b2f35;
+
+  /* Common color */
+  --text-color: #{map.get($p, 'dim')};
+  --text-muted-color: #{map.get($p, 'dim')};
+  --text-muted-highlight-color: #{map.get($p, 'bright')};
+  --heading-color: #{map.get($p, 'bright')};
+  --map-tooltip-title-color: #{map.get($p, 'bright')};
+  --map-tooltip-bg: #0d0d0d;
+  --map-zone-hover-fill: #{rgba(map.get($p, 'dim'), 0.18)};
+  --map-zone-hover-stroke: #{map.get($p, 'dim')};
+  --label-color: #{map.get($p, 'bright')};
+  --blockquote-border-color: #{map.get($p, 'deep')};
+  --blockquote-text-color: #{map.get($p, 'dim')};
+  --link-color: #{map.get($p, 'accent')};
+  --link-underline-color: #{map.get($p, 'bright')};
+  --button-bg: #1e2124;
+  --btn-border-color: #2b2f35;
+  --btn-backtotop-color: var(--text-color);
+  --btn-backtotop-border-color: #161718;
+  --card-header-bg: #161718;
+  --checkbox-color: #42464b;
+  --checkbox-checked-color: var(--link-color);
+  --img-bg: radial-gradient(circle, #111111 0%, #0d0d0d 100%);
+  --shimmer-bg: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0%) 0%,
+    #{rgba(map.get($p, 'accent'), 0.4)} 50%,
+    rgb(255 255 255 / 0%) 100%
+  );
+
+  /* Sidebar */
+  --site-title-color: #ffffff;
+  --site-subtitle-color: #{map.get($p, 'accent')};
+  --sidebar-bg: #0d0d0d;
+  --sidebar-border-color: #2b2f35;
+  --sidebar-muted-color: #{map.get($p, 'accent')};
+  --sidebar-active-color: #ffffff;
+  --sidebar-hover-bg: #{map.get($p, 'deep')};
+  --sidebar-btn-bg: #2b2f35;
+  --sidebar-btn-color: #{map.get($p, 'accent')};
+  --avatar-border-color: rgb(255 255 255 / 90%);
+
+  /* Topbar */
+  --topbar-bg: rgb(17 17 17 / 64%);
+  --topbar-text-color: var(--text-color);
+  --search-border-color: #2b2f35;
+  --search-icon-color: #42464b;
+  --input-focus-border-color: #{map.get($p, 'accent')};
+
+  /* Home page */
+  --post-list-text-color: #{map.get($p, 'dim')};
+  --btn-patinator-text-color: var(--text-color);
+  --btn-paginator-hover-color: #2b2f35;
+
+  /* Posts */
+  --toc-highlight: #{map.get($p, 'accent')};
+  --toc-popup-border-color: #2b2f35;
+  --tag-hover: #{map.get($p, 'deep')};
+
+  /* Graph */
+  --graph-bg: var(--main-bg);
+  --graph-border-color: #2b2f35;
+  --graph-control-color: #{map.get($p, 'accent')};
+  --graph-control-hover-bg: #{map.get($p, 'deep')};
+  --graph-settings-bg: #0d0d0d;
+  --graph-settings-shadow: rgb(0 0 0 / 45%) 0 8px 30px;
+  --graph-node-current: #{map.get($p, 'accent')};
+  --graph-node-visited: #{map.get($p, 'bright')};
+  --graph-node-default: #{map.get($p, 'dim')};
+  --graph-node-tag: #42464b;
+  --graph-link-color: #{rgba(map.get($p, 'accent'), 0.28)};
+  --graph-link-active-color: #{map.get($p, 'bright')};
+  --graph-label-color: #ffffff;
+  --tb-odd-bg: #1e2124;
+  --tb-even-bg: #161718;
+  --tb-border-color: var(--tb-odd-bg);
+  --footnote-target-bg: #{map.get($p, 'deep')};
+  --btn-share-color: #42464b;
+  --btn-share-hover-color: #ffffff;
+  --card-bg: #0d0d0d;
+  --card-hover-bg: #2b2f35;
+  --card-shadow:
+  transparent  0 6px 18px 0, // #{rgba(map.get($p, 'deep'), 0.72)}
+  transparent 0 0 0 1px; // #{rgba(map.get($p, 'deep'), 0.5)}
+
+  --card-hover-shadow:
+    #{rgba(map.get($p, 'accent'), 0.72)} 0 7px 19px 0,
+    #{rgba(map.get($p, 'accent'), 0.4)} 0 0 0 1px;
+  --kbd-wrap-color: #42464b;
+  --kbd-text-color: #ffffff;
+  --kbd-bg-color: #0d0d0d;
+  --prompt-text-color: rgb(255 255 255 / 75%);
+  --prompt-tip-bg: rgb(13 13 13 / 64%);
+  --prompt-tip-icon-color: #{map.get($p, 'accent')};
+  --prompt-info-bg: rgb(43 47 53 / 80%);
+  --prompt-info-icon-color: #ffffff;
+  --prompt-warning-bg: #{rgba(map.get($p, 'mid'), 0.8)};
+  --prompt-warning-icon-color: #{map.get($p, 'accent')};
+  --prompt-danger-bg: #{rgba(map.get($p, 'dim'), 0.8)};
+  --prompt-danger-icon-color: #ffffff;
+
+  /* Tags */
+  --tag-border: #{map.get($p, 'dim')};
+  --tag-shadow: #161718;
+  --dash-color: #42464b;
+  --search-tag-bg: #2b2f35;
+
+  /* Categories */
+  --categories-border: rgb(66 70 75 / 50%);
+  --categories-hover-bg: #2b2f35;
+  --categories-icon-hover-color: #ffffff;
+
+  /* Archive */
+  --timeline-node-bg: #{map.get($p, 'accent')};
+  --timeline-color: #42464b;
+  --timeline-year-dot-color: var(--timeline-color);
+
+  /* Code highlight colors */
+  --language-border-color: #2b2f35;
+  --highlight-bg-color: #0d0d0d;
+  --highlighter-rouge-color: #ffffff;
+  --highlight-lineno-color: #42464b;
+  --inline-code-bg: rgb(13 13 13 / 20%);
+  --code-color: #ffffff;
+  --code-header-text-color: #{map.get($p, 'accent')};
+  --code-header-muted-color: #2b2f35;
+  --code-header-icon-color: #42464b;
+  --clipboard-checked-color: #{map.get($p, 'accent')};
+  --filepath-text-color: #ffffff;
+
+  .light {
+    display: none;
+  }
+
+  details {
+    background: #0d0d0d;
+    border: 1px solid #2b2f35;
+    border-radius: 10px;
+    margin: 12px 0;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      border-color: #42464b;
+      box-shadow: 0 0 0 1px #{rgba(map.get($p, 'dim'), 0.15)};
+    }
+
+    &[open] {
+      border-color: #{map.get($p, 'deep')};
+      box-shadow: 0 0 18px #{rgba(map.get($p, 'accent'), 0.08)};
+    }
+  }
+
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 14px;
+    background: linear-gradient(90deg, #161718, #0d0d0d);
+    color: #{map.get($p, 'accent')};
+    font-weight: 600;
+    border-bottom: 1px solid #1e2124;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s ease, color 0.2s ease;
+
+    &:hover {
+      background: linear-gradient(90deg, #1e2124, #161718);
+      color: #ffffff;
+    }
+
+    &:focus {
+      outline: none;
+    }
+
+    /* стрелочка */
+    &::after {
+      content: "▸";
+      color: #{map.get($p, 'dim')};
+      transition: transform 0.2s ease, color 0.2s ease;
+    }
+
+    details[open] &::after {
+      transform: rotate(90deg);
+      color: #{map.get($p, 'accent')};
+    }
+  }
+
+  /* контент внутри details */
+  details > *:not(summary) {
+    padding: 12px 14px;
+    color: #{map.get($p, 'dim')};
+    background: #0d0d0d;
+    border-top: 1px solid #1e2124;
+  }
+
+  /* текст внутри (если используется markdown/wordpress blocks) */
+  details p {
+    margin: 8px 0;
+    color: #{map.get($p, 'dim')};
+  }
+
+  /* Categories */
+  .categories.card,
+  .list-group-item {
+    background-color: var(--card-bg);
+  }
+
+  .categories {
+    .card-header {
+      background-color: var(--card-header-bg);
+    }
+
+    .list-group-item {
+      border-left: none;
+      border-right: none;
+      padding-left: 2rem;
+      border-color: var(--categories-border);
+
+      &:last-child {
+        border-bottom-color: var(--card-bg);
+      }
+    }
+  }
+
+  #archives li:nth-child(odd) {
+    background-image: linear-gradient(
+      to left,
+      #111111,
+      #1e2124,
+      #1e2124,
+      #1e2124,
+      #111111
+    );
+  }
+
+  #disqus_thread {
+    color-scheme: none;
+  }
+
+  /* --- Syntax highlight --- */
+
+  .highlight .gp {
+    color: #42464b;
+  }
+
+  .highlight table td {
+    padding: 5px;
+  }
+
+  .highlight table pre {
+    margin: 0;
+  }
+
+  .highlight,
+  .highlight .w {
+    color: #ffffff;
+    background-color: #0d0d0d;
+  }
+
+  .highlight .err {
+    color: #ffffff;
+    background-color: #{map.get($p, 'dim')};
+  }
+
+  .highlight .c,
+  .highlight .ch,
+  .highlight .cd,
+  .highlight .cm,
+  .highlight .cpf,
+  .highlight .c1,
+  .highlight .cs {
+    color: #{map.get($p, 'bright')};
+  }
+
+  .highlight .cp,
+  .highlight .nt,
+  .highlight .nn,
+  .highlight .nc,
+  .highlight .no,
+  .highlight .na,
+  .highlight .gh {
+    color: #{map.get($p, 'accent')};
+  }
+
+  .highlight .o,
+  .highlight .ow,
+  .highlight .p,
+  .highlight .pi {
+    color: #ffffff;
+  }
+
+  .highlight .gi {
+    color: #{map.get($p, 'accent')};
+  }
+
+  .highlight .gd {
+    color: #ffffff;
+    background-color: #{map.get($p, 'deep')};
+  }
+
+  .highlight .k,
+  .highlight .kn,
+  .highlight .kp,
+  .highlight .kr,
+  .highlight .kv,
+  .highlight .sa {
+    color: #{map.get($p, 'bright')};
+  }
+
+  .highlight .kc,
+  .highlight .kt,
+  .highlight .kd {
+    color: #{map.get($p, 'mid')};
+  }
+
+  .highlight .s,
+  .highlight .sb,
+  .highlight .sc,
+  .highlight .dl,
+  .highlight .sd,
+  .highlight .s2,
+  .highlight .sh,
+  .highlight .sx,
+  .highlight .s1 {
+    color: #ffffff;
+  }
+
+  .highlight .sr {
+    color: #{map.get($p, 'accent')};
+  }
+
+  .highlight .si,
+  .highlight .se {
+    color: #{map.get($p, 'bright')};
+  }
+
+  .highlight .m,
+  .highlight .mb,
+  .highlight .mf,
+  .highlight .mh,
+  .highlight .mi,
+  .highlight .il,
+  .highlight .mo,
+  .highlight .mx,
+  .highlight .ss {
+    color: #ffffff;
+  }
+}

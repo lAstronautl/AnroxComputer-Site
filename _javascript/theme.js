@@ -6,6 +6,7 @@
 class Theme {
   static #modeKey = 'mode';
   static #modeAttr = 'data-mode';
+  static #themeKey = 'anco-theme';
   static #darkMedia = window.matchMedia('(prefers-color-scheme: dark)');
   static switchable = !document.documentElement.hasAttribute(this.#modeAttr);
 
@@ -19,6 +20,32 @@ class Theme {
 
   static get ANCO() {
     return 'anco';
+  }
+
+  static get CONSOLE_RED() {
+    return 'console-red';
+  }
+
+  static get CONSOLE_GREEN() {
+    return 'console-green';
+  }
+
+  /** Themes the site owner fixes in `theme_mode`; the sidebar button cycles through these (all dark). */
+  static get THEMES() {
+    return [this.ANCO, this.CONSOLE_RED, this.CONSOLE_GREEN];
+  }
+
+  static get THEME_NAMES() {
+    return {
+      [this.ANCO]: 'АнКо',
+      [this.CONSOLE_RED]: 'Консоль — красная',
+      [this.CONSOLE_GREEN]: 'Консоль — зелёная'
+    };
+  }
+
+  /** The theme chosen with the sidebar button, if any. */
+  static get current() {
+    return this.THEMES.includes(this.#mode) ? this.#mode : this.ANCO;
   }
 
   /**
@@ -59,7 +86,7 @@ class Theme {
   }
 
   static get #isDarkMode() {
-    return this.#mode === this.DARK || this.#mode === this.ANCO;
+    return this.#mode === this.DARK || this.THEMES.includes(this.#mode);
   }
 
   static get #hasMode() {
@@ -80,7 +107,9 @@ class Theme {
     return {
       [this.LIGHT]: light,
       [this.DARK]: dark,
-      [this.ANCO]: dark
+      [this.ANCO]: dark,
+      [this.CONSOLE_RED]: dark,
+      [this.CONSOLE_GREEN]: dark
     };
   }
 
@@ -89,6 +118,7 @@ class Theme {
    */
   static init() {
     if (!this.switchable) {
+      this.#restoreTheme();
       return;
     }
 
@@ -110,6 +140,40 @@ class Theme {
     } else {
       this.#setLight();
     }
+  }
+
+  /**
+   * Puts back the theme picked with the sidebar button on an earlier visit
+   * (the layout fixes `data-mode`, this runs before the page is painted).
+   */
+  static #restoreTheme() {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(this.#themeKey);
+    } catch {
+      // storage blocked: keep the theme from the layout
+    }
+
+    if (saved && this.THEMES.includes(saved)) {
+      document.documentElement.setAttribute(this.#modeAttr, saved);
+    }
+  }
+
+  /**
+   * Switches to the next site theme (АнКо → red console → green console) and remembers it
+   */
+  static cycleTheme() {
+    const next = this.THEMES[(this.THEMES.indexOf(this.current) + 1) % this.THEMES.length];
+    document.documentElement.setAttribute(this.#modeAttr, next);
+
+    try {
+      localStorage.setItem(this.#themeKey, next);
+    } catch {
+      // storage blocked: the choice just will not persist
+    }
+
+    this.#notify();
+    return next;
   }
 
   /**

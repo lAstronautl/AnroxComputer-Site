@@ -5,6 +5,7 @@
 @use '../themes/light';
 @use '../themes/dark';
 @use '../themes/anco';
+@use '../themes/console';
 
 :root {
   font-size: 16px;
@@ -24,6 +25,14 @@ html {
     &[data-mode='anco'] {
       @include anco.styles;
     }
+
+    &[data-mode='console-red'] {
+      @include console.styles(console.$red);
+    }
+
+    &[data-mode='console-green'] {
+      @include console.styles(console.$green);
+    }
   }
 
   @media (prefers-color-scheme: dark) {
@@ -38,6 +47,14 @@ html {
 
     &[data-mode='anco'] {
       @include anco.styles;
+    }
+
+    &[data-mode='console-red'] {
+      @include console.styles(console.$red);
+    }
+
+    &[data-mode='console-green'] {
+      @include console.styles(console.$green);
     }
   }
 
