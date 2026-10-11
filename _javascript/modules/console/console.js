@@ -721,8 +721,8 @@ class Shell {
     this.println(`${c.red(this.data.title ?? 'КОНСОЛЬ')}`);
     this.println(c.grey(this.data.version ?? ''));
     if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
-    this.println('Ролевая корпоративная сеть. Всё происходящее здесь — игра: аккаунты хранятся');
-    this.println('только в вашем браузере, «секретные» файлы придуманы.');
+    this.println('Anrox-OS c доступом в корпоротивную сеть которая развернута искуственным интелектом для работы в этом секторе');
+    this.println('Внимание! Несанкционированный доступ в эту сеть может каратся казнью.');
   }
 
   async cmdRegister() {
