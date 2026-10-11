@@ -30,6 +30,10 @@ const LOCK_MS = 60 * 1000;
 const KEEP_ATTEMPTS = 200;
 const SHOW_ATTEMPTS = 20;
 const MAX_BODY = 4096;
+const MAIL_SUBJECT = 60;
+const MAIL_TEXT = 1000;
+const MAIL_INBOX = 100; // older letters are dropped beyond this
+const MAIL_PER_HOUR = 20;
 
 class ApiError extends Error {
   constructor(status, code) {
@@ -106,6 +110,7 @@ async function readBody(request) {
 /* ---------- data access ---------- */
 
 async function publicUser(env, row) {
+  const unread = await env.DB.prepare('SELECT COUNT(*) AS n FROM mail WHERE to_key = ? AND is_read = 0').bind(row.key).first();
   const { results } = await env.DB.prepare('SELECT t, action, target FROM attempts WHERE user_key = ? ORDER BY id DESC LIMIT ?')
     .bind(row.key, SHOW_ATTEMPTS)
     .all();
@@ -118,7 +123,8 @@ async function publicUser(env, row) {
     codes: JSON.parse(row.codes),
     attempts: results.reverse().map((item) => ({ t: item.t, action: item.action, ...(item.target ? { target: item.target } : {}) })),
     stats: { snake: row.snake, hacks: row.hacks },
-    registered: row.registered
+    registered: row.registered,
+    unread: unread?.n ?? 0
   };
 }
 
@@ -158,6 +164,23 @@ function parseLevel(value, fallback) {
   if (value === undefined || value === null || value === '') return Number.isInteger(fallback) ? fallback : null;
   const level = Number(value);
   return Number.isInteger(level) && level >= 0 && level <= MAX_LEVEL ? level : null;
+}
+
+function mailFields(body) {
+  const subject = String(body.subject ?? '').trim().slice(0, MAIL_SUBJECT);
+  const text = String(body.body ?? '').trim();
+  if (!subject) throw new ApiError(400, 'bad-subject');
+  if (!text || text.length > MAIL_TEXT) throw new ApiError(400, 'bad-text');
+  return { subject, text };
+}
+
+async function deliver(env, toKey, from, subject, text) {
+  await env.DB.prepare('INSERT INTO mail (to_key, from_name, subject, body, t) VALUES (?, ?, ?, ?, ?)')
+    .bind(toKey, from, subject, text, Date.now())
+    .run();
+  await env.DB.prepare('DELETE FROM mail WHERE to_key = ? AND id NOT IN (SELECT id FROM mail WHERE to_key = ? ORDER BY id DESC LIMIT ?)')
+    .bind(toKey, toKey, MAIL_INBOX)
+    .run();
 }
 
 /** The employee an admin wants to manage: must exist, not be the admin, and rank below them. */
@@ -255,6 +278,7 @@ async function route(request, env) {
   if (path === '/api/me' && method === 'DELETE') {
     await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(row.key).run();
     await env.DB.prepare('DELETE FROM attempts WHERE user_key = ?').bind(row.key).run();
+    await env.DB.prepare('DELETE FROM mail WHERE to_key = ?').bind(row.key).run();
     await env.DB.prepare('DELETE FROM users WHERE key = ?').bind(row.key).run();
     return { ok: true };
   }
@@ -301,6 +325,54 @@ async function route(request, env) {
       .run();
     await addAttempt(env, row.key, 'adduser', `${name} L${level}`);
     return { created: { name, department: department.name, level } };
+  }
+
+  if (path === '/api/mail' && method === 'GET') {
+    const { results } = await env.DB.prepare(
+      'SELECT id, from_name AS "from", subject, t, is_read AS read FROM mail WHERE to_key = ? ORDER BY id DESC LIMIT 50'
+    )
+      .bind(row.key)
+      .all();
+    return { mail: results.map((item) => ({ ...item, read: Boolean(item.read) })) };
+  }
+
+  if (path === '/api/mail' && method === 'POST') {
+    const body = await readBody(request);
+    const key = userKey(String(body.to ?? ''));
+    const target = key ? await env.DB.prepare('SELECT key, name FROM users WHERE key = ?').bind(key).first() : null;
+    if (!target) throw new ApiError(404, 'not-found');
+    if (target.key === row.key) throw new ApiError(403, 'self');
+    const { subject, text } = mailFields(body);
+
+    const sent = await env.DB.prepare('SELECT COUNT(*) AS n FROM mail WHERE from_name = ? AND t > ?').bind(row.name, Date.now() - 3600000).first();
+    if (sent.n >= MAIL_PER_HOUR) throw new ApiError(429, 'rate');
+
+    await deliver(env, target.key, row.name, subject, text);
+    return { sent: { to: target.name } };
+  }
+
+  if (path === '/api/broadcast' && method === 'POST') {
+    requireAdmin(row);
+    const { subject, text } = mailFields(await readBody(request));
+    const { results } = await env.DB.prepare('SELECT key FROM users WHERE key != ?').bind(row.key).all();
+    for (const person of results) await deliver(env, person.key, row.name, subject, text);
+    await addAttempt(env, row.key, 'broadcast', subject);
+    return { sent: { count: results.length } };
+  }
+
+  const mailId = path.match(/^\/api\/mail\/(\d+)$/);
+  if (mailId && method === 'GET') {
+    const message = await env.DB.prepare('SELECT id, from_name AS "from", subject, body, t FROM mail WHERE id = ? AND to_key = ?')
+      .bind(Number(mailId[1]), row.key)
+      .first();
+    if (!message) throw new ApiError(404, 'not-found');
+    await env.DB.prepare('UPDATE mail SET is_read = 1 WHERE id = ?').bind(message.id).run();
+    return { message };
+  }
+
+  if (mailId && method === 'DELETE') {
+    await env.DB.prepare('DELETE FROM mail WHERE id = ? AND to_key = ?').bind(Number(mailId[1]), row.key).run();
+    return { ok: true };
   }
 
   if (path === '/api/unlock' && method === 'POST') {
@@ -388,6 +460,7 @@ async function route(request, env) {
 
     await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(target.key).run();
     await env.DB.prepare('DELETE FROM attempts WHERE user_key = ?').bind(target.key).run();
+    await env.DB.prepare('DELETE FROM mail WHERE to_key = ?').bind(target.key).run();
     await env.DB.prepare('DELETE FROM users WHERE key = ?').bind(target.key).run();
     await addAttempt(env, row.key, 'fire', `${target.name} L${target.level}`);
     return { target: { name: target.name } };

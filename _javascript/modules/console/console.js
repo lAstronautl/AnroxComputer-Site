@@ -57,6 +57,7 @@ class Shell {
     this.sound = null;
     this.articlesUrl = '';
     this.articles = null;
+    this.mailBox = null; // letters from the last `mail` listing, so numbers stay stable
     this.queue = [];
     this.pumpTimer = 0;
     this.pumpedAt = 0;
@@ -172,7 +173,8 @@ class Shell {
 
   promptString() {
     if (!this.user) return `${c.grey('guest@anrox')} ${c.red('$')} `;
-    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${c.red(' $')} `;
+    const mail = this.user.unread > 0 ? ` ${c.amber(`✉${this.user.unread}`)}` : '';
+    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${mail}${c.red(' $')} `;
   }
 
   showPrompt() {
@@ -336,6 +338,7 @@ class Shell {
       this.println(c.red(`Сбой терминала: ${error.message}`));
     }
 
+    await this.refreshUser(); // keeps the ✉ counter in the prompt current
     this.busy = false;
     this.showPrompt();
   }
@@ -383,11 +386,19 @@ class Shell {
 
   signIn(user, { silent = false } = {}) {
     this.user = user;
+    this.mailBox = null;
     this.cwd = '/';
     if (silent) return;
 
     this.println(c.green(`Вход выполнен. Добро пожаловать, ${user.name}.`));
     this.println(`Допуск: ${c.bright(this.levelName(user.level))} (L${user.level}). Введите ${c.amber('help')}.`);
+    this.mailNotice();
+  }
+
+  mailNotice() {
+    if (this.user?.unread > 0) {
+      this.println(c.amber(`✉ Новых писем: ${this.user.unread}.`) + c.grey(' Команда: mail'));
+    }
   }
 
   /** Queue an account call; the result (a user) replaces the in-memory copy. */
@@ -417,7 +428,7 @@ class Shell {
   failure(error) {
     const text = {
       network: 'Сервер недоступен. Попробуйте позже.',
-      rate: 'Слишком много попыток. Подождите минуту.',
+      rate: 'Слишком много попыток или писем. Подождите.',
       taken: 'Сотрудник с таким позывным уже зарегистрирован.',
       credentials: 'Неверный позывной или пароль.',
       'bad-name': 'Позывной: 2–24 символа, только буквы, цифры, «_» и «-».',
@@ -431,6 +442,8 @@ class Shell {
       self: 'Над собой эта команда не действует.',
       above: 'Нельзя управлять сотрудником равного или более высокого уровня.',
       'bad-keyword': 'Некорректное ключевое слово.',
+      'bad-subject': 'Нужна тема письма (до 60 символов).',
+      'bad-text': 'Текст письма: от 1 до 1000 символов.',
       'not-lower': 'Это не понижение: у сотрудника уже такой или более низкий уровень.'
     }[error] ?? 'Сбой сервера. Попробуйте позже.';
     this.println(c.red(text));
@@ -556,6 +569,32 @@ class Shell {
         auth: true,
         run: (args) => this.cmdSearch(args)
       },
+      mail: {
+        desc: 'почта (mail — список, mail <номер> — прочитать)',
+        auth: true,
+        run: (args) => this.cmdMail(args)
+      },
+      send: {
+        desc: 'написать письмо (send <позывной>)',
+        auth: true,
+        run: (args) => this.cmdSend(args)
+      },
+      reply: {
+        desc: 'ответить на письмо (reply <номер>)',
+        auth: true,
+        run: (args) => this.cmdReply(args)
+      },
+      delmail: {
+        desc: 'удалить письмо (delmail <номер>)',
+        auth: true,
+        run: (args) => this.cmdDelMail(args)
+      },
+      broadcast: {
+        desc: 'рассылка всему персоналу',
+        auth: true,
+        admin: true,
+        run: () => this.cmdBroadcast()
+      },
       auth: {
         desc: 'ввести ключевое слово (auth <СЛОВО>)',
         auth: true,
@@ -649,6 +688,10 @@ class Shell {
     commands.cls = commands.clear;
     commands.useradd = commands.adduser;
     commands.unlock = commands.auth;
+    commands.inbox = commands.mail;
+    commands.почта = commands.mail;
+    commands.написать = commands.send;
+    commands.рассылка = commands.broadcast;
     commands.ключ = commands.auth;
     commands.промоушен = commands.promote;
     commands.персонал = commands.staff;
@@ -667,7 +710,7 @@ class Shell {
     const shown = new Set();
     this.println(c.bold(c.red('Команды:')));
     for (const [name, command] of Object.entries(this.commands)) {
-      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?'].includes(name)) continue;
+      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox'].includes(name)) continue;
       shown.add(command);
       this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}${command.auth && !this.user ? c.grey('  [после входа]') : ''}`);
     }
@@ -870,6 +913,144 @@ class Shell {
       this.println(`  ${this.tag(file)} ${c.bright(file.path)}  ${c.grey(file.title ?? '')}`);
       if (snippet) this.println(`      ${c.grey(snippet)}`);
     }
+  }
+
+  /** Several lines of text; an empty line sends. Returns null when cancelled. */
+  async composeText() {
+    this.println(c.grey('Текст письма. Пустая строка — отправить, Ctrl+C — отмена.'));
+    const lines = [];
+    while (lines.length < 14) {
+      const line = await this.ask(c.grey('| '));
+      if (line == null) return null;
+      if (!line.trim() && lines.length > 0) break;
+      if (line.trim()) lines.push(line.trim());
+    }
+    return lines.join('\n');
+  }
+
+  async mailRows() {
+    await this.chain;
+    const result = await this.backend.mailList(this.user);
+    if (result.error) {
+      this.failure(result.error);
+      return null;
+    }
+    this.mailBox = result.mail;
+    return result.mail;
+  }
+
+  /** Letter number the player typed → letter from the last list. */
+  async pickLetter(text, usage) {
+    const number = Number(String(text ?? '').trim());
+    if (!Number.isInteger(number) || number < 1) {
+      this.println(c.grey(`Использование: ${usage}`));
+      return null;
+    }
+    if (!this.mailBox && !(await this.mailRows())) return null;
+
+    const letter = this.mailBox[number - 1];
+    if (!letter) this.println(c.red('Нет письма с таким номером.') + c.grey(' Список: mail'));
+    return letter ?? null;
+  }
+
+  async cmdMail(args) {
+    if (args[0]) {
+      const letter = await this.pickLetter(args[0], 'mail <номер>');
+      if (!letter) return;
+
+      const result = await this.backend.mailRead(this.user, letter.id);
+      if (result.error) {
+        this.failure(result.error);
+        return;
+      }
+
+      const { message } = result;
+      this.println(c.red(`── ${message.subject} ${'─'.repeat(Math.max(2, 40 - [...message.subject].length))}`));
+      this.println(c.grey(`От: ${message.from}   ${new Date(message.t).toLocaleString('ru-RU')}`));
+      this.println('');
+      this.println(this.wrap(message.body));
+      this.println(c.red('─'.repeat(44)));
+      this.println(c.grey(`Ответить: reply ${args[0]}   Удалить: delmail ${args[0]}`));
+      letter.read = true;
+      await this.refreshUser();
+      return;
+    }
+
+    const rows = await this.mailRows();
+    if (!rows) return;
+    if (rows.length === 0) {
+      this.println(c.grey('Писем нет.'));
+      return;
+    }
+
+    this.println(c.bold(c.red(`Почта — писем: ${rows.length}`)));
+    rows.forEach((letter, i) => {
+      const mark = letter.read ? ' ' : c.amber('●');
+      const when = new Date(letter.t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      this.println(`  ${mark} ${c.bright(String(i + 1).padStart(2))}. ${c.grey(when)}  ${c.green(letter.from.padEnd(14))} ${letter.subject}`);
+    });
+    this.println(c.grey('mail <номер> — прочитать, send <позывной> — написать.'));
+  }
+
+  async sendLetter(to, subject) {
+    const text = await this.composeText();
+    if (text == null) return;
+
+    await this.chain;
+    const result = await this.backend.mailSend(this.user, { to, subject, body: text });
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.green(`Письмо отправлено: ${result.sent.to}.`));
+  }
+
+  async cmdSend(args) {
+    const to = args[0] ?? (await this.ask(c.amber('Кому (позывной): ')))?.trim();
+    if (!to) return;
+
+    const subject = (await this.ask(c.amber('Тема: ')))?.trim();
+    if (!subject) return;
+    await this.sendLetter(to, subject.slice(0, 60));
+  }
+
+  async cmdReply(args) {
+    const letter = await this.pickLetter(args[0], 'reply <номер>');
+    if (!letter) return;
+
+    const subject = /^re:/i.test(letter.subject) ? letter.subject : `Re: ${letter.subject}`;
+    this.println(c.grey(`Кому: ${letter.from}   Тема: ${subject}`));
+    await this.sendLetter(letter.from, subject.slice(0, 60));
+  }
+
+  async cmdDelMail(args) {
+    const letter = await this.pickLetter(args[0], 'delmail <номер>');
+    if (!letter) return;
+
+    const result = await this.backend.mailDelete(this.user, letter.id);
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.mailBox = null;
+    this.println(c.grey('Письмо удалено.'));
+    await this.refreshUser();
+  }
+
+  async cmdBroadcast() {
+    this.println(c.bold(c.red('=== РАССЫЛКА ВСЕМУ ПЕРСОНАЛУ ===')) + c.grey('  (Ctrl+C — отмена)'));
+    const subject = (await this.ask(c.amber('Тема: ')))?.trim();
+    if (!subject) return;
+    const text = await this.composeText();
+    if (text == null) return;
+
+    await this.chain;
+    const result = await this.backend.broadcast(this.user, { subject: subject.slice(0, 60), body: text });
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.green(`Рассылка отправлена: ${result.sent.count}.`));
   }
 
   async cmdAuth(args) {
@@ -1337,6 +1518,7 @@ class Shell {
     if (user) {
       this.signIn(user, { silent: true });
       this.println(c.green(`Сеанс восстановлен: ${user.name} (${this.levelName(user.level)}).`));
+      this.mailNotice();
     } else {
       this.println('');
       this.println(`Для доступа: ${c.amber('register')} — новый сотрудник, ${c.amber('login')} — вход, ${c.amber('help')} — команды.`);

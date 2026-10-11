@@ -20,6 +20,33 @@ import {
 
 const TOKEN_KEY = 'anco-console-token';
 
+const MAIL_KEY = 'anco-console-mail';
+
+function loadMail() {
+  try {
+    return JSON.parse(localStorage.getItem(MAIL_KEY) ?? 'null') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMail(all) {
+  try {
+    localStorage.setItem(MAIL_KEY, JSON.stringify(all));
+  } catch {
+    // storage blocked: letters just will not persist
+  }
+}
+
+const mailKey = (name) => name.trim().toLowerCase();
+
+/** The user with the unread-letters counter the prompt shows. */
+function withUnread(user) {
+  if (!user) return user;
+  const box = loadMail()[mailKey(user.name)] ?? [];
+  return { ...user, unread: box.filter((letter) => !letter.read).length };
+}
+
 export class LocalBackend {
   constructor(data) {
     this.data = data;
@@ -43,11 +70,11 @@ export class LocalBackend {
 
   async restore() {
     const stored = getSessionName();
-    return stored ? getUser(stored) : null;
+    return stored ? withUnread(getUser(stored)) : null;
   }
 
   async refresh(user) {
-    return getUser(user.name) ?? user;
+    return withUnread(getUser(user.name) ?? user);
   }
 
   async logout() {
@@ -56,18 +83,18 @@ export class LocalBackend {
 
   async log(user, entry) {
     logAttempt(user.name, entry);
-    return getUser(user.name) ?? user;
+    return withUnread(getUser(user.name) ?? user);
   }
 
   async saveStats(user, patch) {
-    return updateUser(user.name, { stats: { ...(user.stats ?? {}), ...patch } }) ?? user;
+    return withUnread(updateUser(user.name, { stats: { ...(user.stats ?? {}), ...patch } }) ?? user);
   }
 
   async unlock(user, keyword) {
     if ((user.codes ?? []).includes(keyword)) return { error: 'already' };
     updateUser(user.name, { codes: [...(user.codes ?? []), keyword] });
     logAttempt(user.name, { action: 'auth', target: keyword });
-    return { user: getUser(user.name) };
+    return { user: withUnread(getUser(user.name)) };
   }
 
   async addUser(actor, { name, department, level, password }) {
@@ -150,6 +177,56 @@ export class LocalBackend {
     deleteUser(target.name);
     logAttempt(actor.name, { action: 'fire', target: `${target.name} L${target.level}` });
     return { target: { name: target.name } };
+  }
+
+  async mailList(user) {
+    const box = loadMail()[mailKey(user.name)] ?? [];
+    return { mail: [...box].reverse().slice(0, 50).map(({ id, from, subject, t, read }) => ({ id, from, subject, t, read })) };
+  }
+
+  async mailRead(user, id) {
+    const all = loadMail();
+    const letter = (all[mailKey(user.name)] ?? []).find((item) => item.id === id);
+    if (!letter) return { error: 'not-found' };
+    letter.read = true;
+    saveMail(all);
+    return { message: { id, from: letter.from, subject: letter.subject, body: letter.body, t: letter.t } };
+  }
+
+  deliver(all, toName, from, subject, body) {
+    const key = mailKey(toName);
+    const box = all[key] ?? [];
+    box.push({ id: Date.now() * 1000 + Math.floor(Math.random() * 1000), from, subject, body, t: Date.now(), read: false });
+    all[key] = box.slice(-100);
+  }
+
+  async mailSend(user, { to, subject, body }) {
+    const target = getUser(to);
+    if (!target) return { error: 'not-found' };
+    if (target.name === user.name) return { error: 'self' };
+
+    const all = loadMail();
+    this.deliver(all, target.name, user.name, subject, body);
+    saveMail(all);
+    return { sent: { to: target.name } };
+  }
+
+  async mailDelete(user, id) {
+    const all = loadMail();
+    all[mailKey(user.name)] = (all[mailKey(user.name)] ?? []).filter((item) => item.id !== id);
+    saveMail(all);
+    return { ok: true };
+  }
+
+  async broadcast(actor, { subject, body }) {
+    if (actor.level < (this.data.admin_level ?? 10)) return { error: 'forbidden' };
+
+    const all = loadMail();
+    const others = Object.values(loadUsers()).filter((person) => person.name !== actor.name);
+    for (const person of others) this.deliver(all, person.name, actor.name, subject, body);
+    saveMail(all);
+    logAttempt(actor.name, { action: 'broadcast', target: subject });
+    return { sent: { count: others.length } };
   }
 
   async remove(user) {
@@ -241,6 +318,26 @@ export class RemoteBackend {
 
   async unlock(user, keyword) {
     return this.call('POST', '/api/unlock', { keyword });
+  }
+
+  async mailList() {
+    return this.call('GET', '/api/mail');
+  }
+
+  async mailRead(user, id) {
+    return this.call('GET', `/api/mail/${id}`);
+  }
+
+  async mailSend(user, { to, subject, body }) {
+    return this.call('POST', '/api/mail', { to, subject, body });
+  }
+
+  async mailDelete(user, id) {
+    return this.call('DELETE', `/api/mail/${id}`);
+  }
+
+  async broadcast(actor, { subject, body }) {
+    return this.call('POST', '/api/broadcast', { subject, body });
   }
 
   async addUser(actor, { name, department, level, password }) {

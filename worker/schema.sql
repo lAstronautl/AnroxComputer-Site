@@ -31,3 +31,15 @@ CREATE TABLE IF NOT EXISTS attempts (
 );
 
 CREATE INDEX IF NOT EXISTS attempts_user ON attempts (user_key, id);
+
+CREATE TABLE IF NOT EXISTS mail (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  to_key    TEXT NOT NULL,
+  from_name TEXT NOT NULL,
+  subject   TEXT NOT NULL,
+  body      TEXT NOT NULL,
+  t         INTEGER NOT NULL,
+  is_read   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS mail_to ON mail (to_key, id);
