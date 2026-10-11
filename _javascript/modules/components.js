@@ -6,6 +6,7 @@ export { initLocaleDatetime } from './components/locale-datetime';
 export { initToc } from './components/toc';
 export { loadMermaid } from './components/mermaid';
 export { modeWatcher } from './components/mode-toggle';
+export { terminalFx } from './components/terminal-fx';
 export { back2top } from './components/back-to-top';
 export { loadTooltip } from './components/tooltip-loader';
 export { initInteractiveMaps } from './components/interactive-map';

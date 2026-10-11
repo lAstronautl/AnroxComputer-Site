@@ -67,6 +67,38 @@ html[data-mode^='console'] {
   }
 }
 
+/* sound switch: only meaningful in the console themes */
+html:not([data-mode^='console']) #sound-toggle {
+  display: none;
+}
+
+/* typed posts: text is hidden until the script starts, with a fail-safe in case it never does */
+html[data-mode^='console'] article[data-typefx]:not([data-fx-ready]) :is(h1, .content) {
+  opacity: 0;
+  animation: console-reveal 0s 2.5s forwards;
+}
+
+html[data-mode^='console'] {
+  .fx-hidden {
+    visibility: hidden;
+  }
+
+  .fx-caret {
+    display: inline-block;
+    width: 0;
+    overflow: visible;
+    color: var(--heading-color);
+    text-shadow: none;
+    animation: console-cursor 0.8s steps(1) infinite;
+  }
+}
+
+@keyframes console-reveal {
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes console-cursor {
   50% {
     opacity: 0;

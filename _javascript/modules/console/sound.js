@@ -120,6 +120,19 @@ export class ConsoleSound {
     this.playing = false;
   }
 
+  /** Mute / unmute without touching the start-up sting or the loop (used by the site-wide switch). */
+  mute(value) {
+    this.enabled = !value;
+    try {
+      localStorage.setItem(STORAGE_KEY, value ? 'off' : 'on');
+    } catch {
+      // ignore
+    }
+    if (value) {
+      this.stop();
+    }
+  }
+
   setEnabled(value) {
     this.enabled = value;
     try {
