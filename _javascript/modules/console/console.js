@@ -603,7 +603,6 @@ class Shell {
       adduser: {
         desc: 'добавить сотрудника (adduser [позывной])',
         auth: true,
-        admin: true,
         run: (args) => this.cmdAddUser(args)
       },
       staff: {
@@ -1115,9 +1114,10 @@ class Shell {
     }
 
     const maxLevel = this.user.level;
-    const levelText = await this.ask(c.amber(`Уровень допуска (0–${maxLevel}, Enter — ${department.level}): `));
+    const defaultLevel = Math.min(department.level, maxLevel);
+    const levelText = await this.ask(c.amber(`Уровень допуска (0–${maxLevel}, Enter — ${defaultLevel}): `));
     if (levelText == null) return;
-    const level = levelText.trim() ? this.parseLevel(levelText) : department.level;
+    const level = levelText.trim() ? this.parseLevel(levelText) : defaultLevel;
     if (level == null) {
       this.failure('bad-level');
       return;

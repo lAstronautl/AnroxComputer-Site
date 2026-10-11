@@ -9,7 +9,7 @@ const DEPARTMENTS = {
   dkb: { name: 'ДКБ — департамент корпоративной безопасности', level: 2 }
 };
 
-// с этого уровня доступны adduser и promote; выдать можно не выше собственного уровня
+// с этого уровня доступны promote, demote, transfer, resetpass, fire, broadcast (adduser — всем вошедшим, но не выше своего уровня)
 const ADMIN_LEVEL = 10;
 const MAX_LEVEL = 100;
 
@@ -34,6 +34,7 @@ const MAIL_SUBJECT = 60;
 const MAIL_TEXT = 1000;
 const MAIL_INBOX = 100; // older letters are dropped beyond this
 const MAIL_PER_HOUR = 20;
+const ADDUSER_PER_HOUR = 10;
 
 class ApiError extends Error {
   constructor(status, code) {
@@ -301,18 +302,23 @@ async function route(request, env) {
   }
 
   if (path === '/api/adduser' && method === 'POST') {
-    requireAdmin(row);
+    // any signed-in employee may add someone, but never above their own level
     const body = await readBody(request);
     const name = String(body.name ?? '').trim();
     const password = String(body.password ?? '');
     const department = DEPARTMENTS[String(body.department ?? '')];
-    const level = parseLevel(body.level, department?.level);
+    const level = parseLevel(body.level, department ? Math.min(department.level, row.level) : undefined);
 
     if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
     if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
     if (!department) throw new ApiError(400, 'bad-department');
     if (level === null) throw new ApiError(400, 'bad-level');
     if (level > row.level) throw new ApiError(403, 'too-high');
+
+    const added = await env.DB.prepare('SELECT COUNT(*) AS n FROM attempts WHERE user_key = ? AND action = ? AND t > ?')
+      .bind(row.key, 'adduser', Date.now() - 3600000)
+      .first();
+    if (added.n >= ADDUSER_PER_HOUR) throw new ApiError(429, 'rate');
 
     const key = userKey(name);
     if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');

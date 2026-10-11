@@ -98,8 +98,6 @@ export class LocalBackend {
   }
 
   async addUser(actor, { name, department, level, password }) {
-    const admin = this.data.admin_level ?? 10;
-    if (actor.level < admin) return { error: 'forbidden' };
     if (level > actor.level) return { error: 'too-high' };
 
     const user = await createUser({ name, department: department.name, password, level });

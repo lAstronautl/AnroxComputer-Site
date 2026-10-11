@@ -11,7 +11,7 @@ export const DEPARTMENTS = {
   dkb: { name: 'ДКБ — департамент корпоративной безопасности', level: 2 }
 };
 
-// с этого уровня доступны adduser и promote; выдать можно не выше собственного уровня
+// с этого уровня доступны promote, demote, transfer, resetpass, fire, broadcast (adduser — всем вошедшим, но не выше своего уровня)
 export const ADMIN_LEVEL = 10;
 export const MAX_LEVEL = 100;
 
