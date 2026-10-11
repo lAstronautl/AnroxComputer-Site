@@ -18,7 +18,7 @@ const MAIL_SUBJECT = 60;
 const MAIL_TEXT = 1000;
 const MAIL_INBOX = 100; // older letters are dropped beyond this
 const MAIL_PER_HOUR = 20;
-const ADDUSER_PER_HOUR = 10;
+const ADDUSER_PER_DAY = 2;
 
 class ApiError extends Error {
   constructor(status, code) {
@@ -300,9 +300,9 @@ async function route(request, env) {
     if (level > row.level) throw new ApiError(403, 'too-high');
 
     const added = await env.DB.prepare('SELECT COUNT(*) AS n FROM attempts WHERE user_key = ? AND action = ? AND t > ?')
-      .bind(row.key, 'adduser', Date.now() - 3600000)
+      .bind(row.key, 'adduser', Date.now() - 24 * 3600000)
       .first();
-    if (added.n >= ADDUSER_PER_HOUR) throw new ApiError(429, 'rate');
+    if (added.n >= ADDUSER_PER_DAY) throw new ApiError(429, 'rate');
 
     const key = userKey(name);
     if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');
