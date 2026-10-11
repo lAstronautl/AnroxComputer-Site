@@ -190,8 +190,7 @@ class Shell {
 
   promptString() {
     if (!this.user) return `${c.grey('guest@anrox')} ${c.red('$')} `;
-    const mail = this.user.unread > 0 ? ` ${c.amber(`✉${this.user.unread}`)}` : '';
-    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${mail}${c.red(' $')} `;
+    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${c.red(' $')} `;
   }
 
   showPrompt() {
