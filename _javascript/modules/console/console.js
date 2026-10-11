@@ -18,6 +18,7 @@ import {
   verifyUser
 } from './storage';
 import { playHack, playSnake } from './games';
+import { ConsoleSound } from './sound';
 
 // eslint-disable-next-line no-control-regex
 const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|\x1b|[\s\S]/gu;
@@ -25,12 +26,24 @@ const NAME_RULE = /^[\p{L}\p{N}_-]{2,24}$/u;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// typewriter: one character every CHAR_MS; escape sequences cost nothing and are never split
+const CHAR_MS = 6;
+const PUMP_MS = 16;
+const FAST_AFTER = 700; // long dumps speed up so a big file never takes more than a few seconds
+const UNITS = /\x1b\[[0-9;?]*[A-Za-z~]|\x1b[\s\S]|[\s\S]/gu; // eslint-disable-line no-control-regex
+
 const LOGO = [
-  '   ___   _  _  ___  ___ ',
-  '  / _ \\ | \\| |/ __|/ _ \\',
-  ' |  _  || .` | (__| (_) |',
-  ' |_| |_||_|\\_|\\___|\\___/'
+  ' █████╗ ███╗   ██╗██████╗  ██████╗ ██╗  ██╗     ██████╗ ███████╗',
+  '██╔══██╗████╗  ██║██╔══██╗██╔═══██╗╚██╗██╔╝    ██╔═══██╗██╔════╝',
+  '███████║██╔██╗ ██║██████╔╝██║   ██║ ╚███╔╝     ██║   ██║███████╗',
+  '██╔══██║██║╚██╗██║██╔══██╗██║   ██║ ██╔██╗     ██║   ██║╚════██║',
+  '██║  ██║██║ ╚████║██║  ██║╚██████╔╝██╔╝ ██╗    ╚██████╔╝███████║',
+  '╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚══════╝'
 ];
+
+// the banner is 66 columns wide; narrower terminals (phones) get a plain title
+const LOGO_WIDTH = 66;
+const LOGO_SMALL = ['ANROX OS'];
 
 class Shell {
   constructor(data) {
@@ -47,21 +60,100 @@ class Shell {
     this.askState = null;
     this.keyHandler = null;
     this.busy = true;
+    this.sound = null;
+    this.queue = [];
+    this.pumpTimer = 0;
+    this.pumpedAt = 0;
     this.commands = this.buildCommands();
   }
 
   /* ---------- output ---------- */
 
+  get typing() {
+    return this.queue.length > 0;
+  }
+
+  /** Raw terminal output. Keeps its place behind any text that is still being typed. */
   raw(text) {
-    this.term.write(text);
+    if (this.typing) this.queue.push({ text, typed: false });
+    else this.term.write(text);
+  }
+
+  /** Text that appears character by character. */
+  type(text) {
+    const units = text.match(UNITS) ?? [];
+    this.queue.push({ units, at: 0, typed: true });
+    this.startPump();
   }
 
   print(text = '') {
-    this.term.write(crlf(text));
+    this.type(crlf(text));
   }
 
   println(text = '') {
-    this.term.write(`${crlf(text)}\r\n`);
+    this.type(`${crlf(text)}\r\n`);
+  }
+
+  /** Instant line (used for the big banner, which would take forever to type). */
+  printlnFast(text = '') {
+    this.raw(`${crlf(text)}\r\n`);
+  }
+
+  startPump() {
+    if (this.pumpTimer) return;
+    this.pumpedAt = performance.now();
+    this.pumpTimer = setInterval(() => this.pump(), PUMP_MS);
+  }
+
+  pending() {
+    return this.queue.reduce((sum, item) => sum + (item.typed ? item.units.length - item.at : 0), 0);
+  }
+
+  pump() {
+    const now = performance.now();
+    const speed = this.pending() > FAST_AFTER ? Math.ceil(this.pending() / FAST_AFTER) : 1;
+    let budget = Math.max(1, Math.floor(((now - this.pumpedAt) / CHAR_MS) * speed));
+    this.pumpedAt = now;
+    let out = '';
+    let visible = 0;
+
+    while (this.queue.length > 0 && budget > 0) {
+      const item = this.queue[0];
+      if (!item.typed) {
+        out += item.text;
+        this.queue.shift();
+        continue;
+      }
+
+      while (item.at < item.units.length && budget > 0) {
+        const unit = item.units[item.at];
+        item.at += 1;
+        out += unit;
+        if (unit.length === 1 && unit >= ' ') {
+          budget -= 1;
+          if (unit !== ' ') visible += 1;
+        }
+      }
+      if (item.at >= item.units.length) this.queue.shift();
+    }
+
+    if (out) this.term.write(out);
+    if (visible) this.sound?.tick();
+    if (this.queue.length === 0) this.stopPump();
+  }
+
+  stopPump() {
+    clearInterval(this.pumpTimer);
+    this.pumpTimer = 0;
+  }
+
+  /** Write everything still queued at once (a key press skips the typing effect). */
+  skipTyping() {
+    let out = '';
+    for (const item of this.queue) out += item.typed ? item.units.slice(item.at).join('') : item.text;
+    this.queue = [];
+    this.stopPump();
+    if (out) this.term.write(out);
   }
 
   clear() {
@@ -75,8 +167,8 @@ class Shell {
   /* ---------- line editor ---------- */
 
   promptString() {
-    if (!this.user) return `${c.grey('гость@анко')} ${c.red('$')} `;
-    return `${c.green(this.user.name)}${c.grey('@анко')} ${c.blue(this.cwd)}${c.red(' $')} `;
+    if (!this.user) return `${c.grey('guest@anrox')} ${c.red('$')} `;
+    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${c.red(' $')} `;
   }
 
   showPrompt() {
@@ -108,6 +200,11 @@ class Shell {
   }
 
   handleData(data) {
+    if (this.typing) {
+      this.skipTyping(); // the key press only skips the effect
+      return;
+    }
+
     for (const token of data.match(TOKENS) ?? []) {
       if (this.keyHandler) {
         this.keyHandler(token);
@@ -290,7 +387,8 @@ class Shell {
   }
 
   refreshUser() {
-    if (this.user) this.user = getUser(this.user.name);
+    if (!this.user) return;
+    this.user = getUser(this.user.name) ?? this.user;
   }
 
   saveStats(patch) {
@@ -300,7 +398,9 @@ class Shell {
   }
 
   log(entry) {
-    if (this.user) logAttempt(this.user.name, entry);
+    if (!this.user) return;
+    logAttempt(this.user.name, entry);
+    this.refreshUser(); // keep the in-memory copy in step with what was just saved
   }
 
   requireLogin() {
@@ -416,6 +516,10 @@ class Shell {
         desc: 'журнал ваших обращений',
         auth: true,
         run: () => this.cmdLog()
+      },
+      sound: {
+        desc: 'звук консоли (sound on | off)',
+        run: (args) => this.cmdSound(args)
       },
       games: {
         desc: 'список игр',
@@ -674,6 +778,7 @@ class Shell {
   }
 
   cmdLog() {
+    this.refreshUser();
     const attempts = this.user.attempts ?? [];
     if (attempts.length === 0) {
       this.println(c.grey('Журнал пуст.'));
@@ -685,6 +790,22 @@ class Shell {
       const mark = item.action === 'denied' || item.action === 'bad-code' || item.action === 'hack-failed' ? c.red : c.grey;
       this.println(`  ${c.grey(when)}  ${mark(item.action.padEnd(12))} ${item.target ?? ''}`);
     }
+  }
+
+  cmdSound(args) {
+    const mode = (args[0] ?? '').toLowerCase();
+    if (!this.sound?.supported) {
+      this.println(c.grey('Звук недоступен в этом браузере.'));
+      return;
+    }
+
+    if (mode === 'on' || mode === 'вкл') this.sound.setEnabled(true);
+    else if (mode === 'off' || mode === 'выкл') this.sound.setEnabled(false);
+    else {
+      this.println(c.grey(`Звук: ${this.sound.enabled ? 'включён' : 'выключен'}. Использование: sound on | sound off`));
+      return;
+    }
+    this.println(c.grey(`Звук ${this.sound.enabled ? 'включён' : 'выключен'}.`));
   }
 
   cmdGames() {
@@ -701,23 +822,34 @@ class Shell {
     else this.println(c.grey('Использование: play snake | play hack'));
   }
 
+  /** Resolves once the typewriter has caught up. */
+  flush() {
+    return new Promise((resolve) => {
+      const check = () => (this.typing ? setTimeout(check, PUMP_MS) : resolve());
+      check();
+    });
+  }
+
   /* ---------- start-up ---------- */
 
   async boot() {
     this.busy = true;
 
-    for (const row of LOGO) {
-      this.println(c.red(row));
+    const logo = (this.term.cols ?? 80) >= LOGO_WIDTH + 2 ? LOGO : LOGO_SMALL;
+    for (const row of logo) {
+      this.printlnFast(c.red(row));
       await sleep(40);
     }
     this.println('');
     this.println(c.bright(this.data.title ?? 'КОНСОЛЬ'));
     this.println(c.grey(this.data.version ?? ''));
-    await sleep(120);
+    await this.flush();
     this.println(c.grey('Проверка каналов связи ...... ') + c.green('OK'));
-    await sleep(90);
+    await this.flush();
+    await sleep(150);
     this.println(c.grey('Шифрование ................... ') + c.green('OK'));
-    await sleep(90);
+    await this.flush();
+    await sleep(150);
 
     const stored = getSessionName();
     const user = stored ? getUser(stored) : null;
@@ -756,6 +888,8 @@ export async function initConsole() {
   }
 
   const shell = new Shell(data);
+  const sound = new ConsoleSound({ startUrl: root.dataset.soundStart, loopUrl: root.dataset.soundLoop });
+  shell.sound = sound;
   const term = new WTerm(screen, {
     cursorBlink: true,
     onData: (input) => shell.handleData(input)
@@ -770,6 +904,42 @@ export async function initConsole() {
   }
 
   root.addEventListener('click', () => term.focus());
+
+  // browsers only allow audio after a gesture, so the terminal "powers on" with a click
+  const toggle = document.getElementById('rp-console-sound');
+  const syncToggle = () => {
+    if (!toggle) return;
+    toggle.hidden = !sound.supported;
+    toggle.setAttribute('aria-pressed', String(sound.enabled));
+    toggle.textContent = sound.enabled ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
+  };
+  syncToggle();
+  toggle?.addEventListener('click', () => {
+    sound.setEnabled(!sound.enabled);
+    syncToggle();
+  });
+  const setEnabled = sound.setEnabled.bind(sound);
+  sound.setEnabled = (value) => {
+    setEnabled(value);
+    syncToggle();
+  };
+
+  window.addEventListener('pagehide', () => sound.stop());
+
+  const gate = document.createElement('button');
+  gate.type = 'button';
+  gate.className = 'rp-console-power';
+  gate.textContent = sound.enabled && sound.supported ? '[ ВКЛЮЧИТЬ ТЕРМИНАЛ ]' : '[ ЗАПУСТИТЬ ТЕРМИНАЛ ]';
+  root.append(gate);
+  gate.focus({ preventScroll: true });
+
+  await new Promise((resolve) => {
+    gate.addEventListener('click', resolve, { once: true });
+  });
+  gate.remove();
+
+  sound.unlock();
+  void sound.start();
   term.focus();
   await shell.boot();
 }

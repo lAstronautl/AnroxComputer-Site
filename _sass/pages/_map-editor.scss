@@ -79,14 +79,14 @@
   }
 
   .map-editor-saved-polygon {
-    fill: rgb(60 120 60 / 18%);
-    stroke: #3c783c;
+    fill: color-mix(in srgb, var(--zone-color, #3c783c) 22%, transparent);
+    stroke: var(--zone-color, #3c783c);
     stroke-width: 1.5px;
     vector-effect: non-scaling-stroke;
   }
 
   .map-editor-saved-point {
-    fill: #3c783c;
+    fill: var(--zone-color, #3c783c);
     stroke: #ffffff;
     stroke-width: 1px;
     vector-effect: non-scaling-stroke;
@@ -120,6 +120,37 @@
     grid-template-columns: 1fr 1fr 2fr auto;
     gap: 0.5rem;
     align-items: start;
+
+    .map-editor-zone-name {
+      display: flex;
+      gap: 0.4rem;
+      align-items: stretch;
+    }
+
+    /* the colour swatch is a small square next to the title */
+    .map-editor-zone-name .map-editor-zone-color {
+      flex: 0 0 2.4rem;
+      width: 2.4rem;
+      height: auto;
+      padding: 0.2rem;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+
+      &::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+
+      &::-webkit-color-swatch {
+        border: 0;
+        border-radius: 0.2rem;
+      }
+
+      &::-moz-color-swatch {
+        border: 0;
+        border-radius: 0.2rem;
+      }
+    }
 
     input,
     textarea {

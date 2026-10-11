@@ -19,6 +19,10 @@
       <polygon
         points="{{ zone.points }}"
         class="interactive-map-zone"
+        {% if zone.color %}
+          data-color="{{ zone.color | strip | escape }}"
+          style="--zone-color: {{ zone.color | strip | escape }}"
+        {% endif %}
         tabindex="0"
         data-title="{{ zone.title | escape }}"
         {% if zone.link %}

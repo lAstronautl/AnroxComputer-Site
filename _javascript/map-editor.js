@@ -9,6 +9,21 @@ function escapeYaml(value) {
   return String(value ?? '').replace(/"/g, '\\"');
 }
 
+// Distinct colours handed out to zones in turn; each zone can be recoloured.
+const ZONE_COLORS = [
+  '#e6194b',
+  '#3cb44b',
+  '#4363d8',
+  '#f58231',
+  '#911eb4',
+  '#46f0f0',
+  '#f032e6',
+  '#ffe119',
+  '#bcf60c',
+  '#008080'
+];
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
 function buildYaml(imagePath, zones) {
   if (zones.length === 0) return '';
 
@@ -18,6 +33,7 @@ function buildYaml(imagePath, zones) {
     const points = zone.points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
     lines.push(`    - points: "${points}"`);
     lines.push(`      title: "${escapeYaml(zone.title)}"`);
+    if (HEX_COLOR.test(zone.color ?? '')) lines.push(`      color: "${zone.color.toLowerCase()}"`);
     if (zone.link) {
       lines.push(`      link: "${escapeYaml(zone.link)}"`);
     } else {
@@ -61,12 +77,12 @@ function parseMapYaml(text) {
     if (!line || line.startsWith('#')) continue;
 
     if (line.startsWith('- ')) {
-      current = { points: [], title: '', text: '', link: '' };
+      current = { points: [], title: '', text: '', link: '', color: '' };
       zones.push(current);
       line = line.slice(2).trim();
     }
 
-    const match = line.match(/^(image|points|title|text|link):\s*(.*)$/);
+    const match = line.match(/^(image|points|title|text|link|color):\s*(.*)$/);
     if (!match) continue;
 
     const [, key, raw] = match;
@@ -160,6 +176,19 @@ export function initMapEditor() {
 
   function syncOutput() {
     output.value = buildYaml(imagePath, zones);
+  }
+
+  // First palette colour that no other zone uses (cycles when all are taken).
+  function nextColor(exceptZone) {
+    const used = new Set(zones.filter((z) => z !== exceptZone).map((z) => (z.color || '').toLowerCase()));
+    return ZONE_COLORS.find((c) => !used.has(c)) ?? ZONE_COLORS[zones.length % ZONE_COLORS.length];
+  }
+
+  // Zones without a valid colour (old code, hand-typed YAML) get one.
+  function ensureColors() {
+    for (const zone of zones) {
+      if (!HEX_COLOR.test(zone.color ?? '')) zone.color = nextColor(zone);
+    }
   }
 
   // Zoom/pan state: scale + translate (in CSS pixels) applied to `viewport`.
@@ -280,16 +309,17 @@ export function initMapEditor() {
       poly.setAttribute('points', pointsAttr);
       poly.setAttribute('data-zone', String(index));
       poly.setAttribute('class', 'map-editor-saved-polygon');
+      poly.style.setProperty('--zone-color', zone.color);
       svg.appendChild(poly);
 
       zone.points.forEach((p, i) => {
-        svg.appendChild(
-          squareAt(p, SAVED_POINT_PX, 'map-editor-saved-point', {
-            'data-zone': String(index),
-            'data-pz': String(index),
-            'data-pi': String(i)
-          })
-        );
+        const square = squareAt(p, SAVED_POINT_PX, 'map-editor-saved-point', {
+          'data-zone': String(index),
+          'data-pz': String(index),
+          'data-pi': String(i)
+        });
+        square.style.setProperty('--zone-color', zone.color);
+        svg.appendChild(square);
       });
     });
     refreshSelection();
@@ -339,7 +369,25 @@ export function initMapEditor() {
         output.value = buildYaml(imagePath, zones);
       });
 
-      row.append(titleInput, linkInput, textInput, removeBtn);
+      // colour swatch next to the name: shows which colour belongs to the zone
+      // on the map and opens the picker to change it
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.className = 'map-editor-zone-color';
+      colorInput.title = 'Цвет зоны';
+      colorInput.setAttribute('aria-label', 'Цвет зоны');
+      colorInput.value = HEX_COLOR.test(zone.color ?? '') ? zone.color : ZONE_COLORS[0];
+      colorInput.addEventListener('input', () => {
+        zone.color = colorInput.value;
+        renderSavedZones();
+        syncOutput();
+      });
+
+      const nameCell = document.createElement('div');
+      nameCell.className = 'map-editor-zone-name';
+      nameCell.append(colorInput, titleInput);
+
+      row.append(nameCell, linkInput, textInput, removeBtn);
       zonesList.appendChild(row);
     });
   }
@@ -524,6 +572,7 @@ export function initMapEditor() {
     zones.push({
       points: currentPoints,
       title: `Зона ${zones.length + 1}`,
+      color: nextColor(),
       text: '',
       link: ''
     });
@@ -550,6 +599,7 @@ export function initMapEditor() {
 
       zones.length = 0;
       zones.push(...parsed.zones);
+      ensureColors();
       if (parsed.image) imagePath = parsed.image;
       currentPoints = [];
 

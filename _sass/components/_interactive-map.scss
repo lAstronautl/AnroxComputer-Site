@@ -32,6 +32,13 @@
       fill: var(--map-zone-hover-fill, rgb(158 0 0 / 18%));
       stroke: var(--map-zone-hover-stroke, #9e0000);
     }
+
+    /* zones with their own colour (`color:` in the zone yaml) */
+    &[data-color]:hover,
+    &[data-color]:focus {
+      fill: color-mix(in srgb, var(--zone-color) 28%, transparent);
+      stroke: var(--zone-color);
+    }
   }
 
   .interactive-map-tooltip {

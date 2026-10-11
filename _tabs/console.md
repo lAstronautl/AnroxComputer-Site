@@ -11,7 +11,11 @@ compress_html: false
   Введите <code>help</code>, чтобы увидеть команды.
 </p>
 
-<div id="rp-console" class="rp-console" aria-label="Корпоративная консоль">
+<button type="button" id="rp-console-sound" class="rp-console-sound-toggle" aria-pressed="true" hidden>🔊 Звук: вкл</button>
+
+<div id="rp-console" class="rp-console" aria-label="Корпоративная консоль"
+  data-sound-start="{{ '/assets/audio/console-start.mp3' | relative_url }}"
+  data-sound-loop="{{ '/assets/audio/console-loop.mp3' | relative_url }}">
   <div class="rp-console-screen"></div>
 </div>
 
