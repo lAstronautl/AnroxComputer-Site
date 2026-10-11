@@ -15,7 +15,8 @@ compress_html: false
 
 <div id="rp-console" class="rp-console" aria-label="Корпоративная консоль"
   data-sound-start="{{ '/assets/audio/console-start.mp3' | relative_url }}"
-  data-sound-loop="{{ '/assets/audio/console-loop.mp3' | relative_url }}">
+  data-sound-loop="{{ '/assets/audio/console-loop.mp3' | relative_url }}"
+  data-articles="{{ '/assets/js/data/console-articles.json' | relative_url }}">
   <div class="rp-console-screen"></div>
 </div>
 

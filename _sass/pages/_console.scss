@@ -132,3 +132,8 @@
     opacity: 0.96;
   }
 }
+
+/* text for the console only: in a post wrap it in <div class="console-only" markdown="1"> … </div> */
+.console-only {
+  display: none !important;
+}

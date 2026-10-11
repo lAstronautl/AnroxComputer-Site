@@ -138,10 +138,19 @@ export class ConsoleSound {
 
   /** A faint key-click for the typewriter effect. */
   tick() {
+    this.click(0.16, 0.045); // never more than ~22 clicks a second
+  }
+
+  /** A firmer click for keys the player presses. */
+  key() {
+    this.click(0.32, 0.015);
+  }
+
+  click(volume, minGap) {
     if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
 
     const now = this.ctx.currentTime;
-    if (now - this.lastTick < 0.045) return; // never more than ~22 clicks a second
+    if (now - this.lastTick < minGap) return;
     this.lastTick = now;
 
     if (!this.tickBuffer) {
@@ -160,7 +169,7 @@ export class ConsoleSound {
     filter.frequency.value = 1800 + Math.random() * 900;
 
     const gain = this.ctx.createGain();
-    gain.gain.value = 0.16;
+    gain.gain.value = volume;
     source.connect(filter).connect(gain).connect(this.master);
     source.start(now);
   }

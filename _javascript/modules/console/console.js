@@ -61,6 +61,8 @@ class Shell {
     this.keyHandler = null;
     this.busy = true;
     this.sound = null;
+    this.articlesUrl = '';
+    this.articles = null;
     this.queue = [];
     this.pumpTimer = 0;
     this.pumpedAt = 0;
@@ -200,10 +202,7 @@ class Shell {
   }
 
   handleData(data) {
-    if (this.typing) {
-      this.skipTyping(); // the key press only skips the effect
-      return;
-    }
+    if (this.typing) this.skipTyping(); // a key press skips the effect and still counts as input
 
     for (const token of data.match(TOKENS) ?? []) {
       if (this.keyHandler) {
@@ -215,6 +214,10 @@ class Shell {
   }
 
   edit(token) {
+    if (token === '\r' || token === '\x7f' || token === '\b' || (token.codePointAt(0) >= 32 && !token.startsWith(ESC))) {
+      this.sound?.key();
+    }
+
     const chars = [...this.line];
     const maxLen = Math.max(10, (this.term.cols ?? 80) - visibleLength(this.promptText) - 2);
 
@@ -517,6 +520,21 @@ class Shell {
         auth: true,
         run: () => this.cmdLog()
       },
+      articles: {
+        desc: 'статьи архива АнКо',
+        auth: true,
+        run: () => this.cmdArticles()
+      },
+      read: {
+        desc: 'прочитать статью (read <номер|слово>)',
+        auth: true,
+        run: (args) => this.cmdRead(args)
+      },
+      goto: {
+        desc: 'открыть статью на сайте (goto <номер|слово>)',
+        auth: true,
+        run: (args) => this.cmdGoto(args)
+      },
       sound: {
         desc: 'звук консоли (sound on | off)',
         run: (args) => this.cmdSound(args)
@@ -539,6 +557,8 @@ class Shell {
     commands.open = commands.cat;
     commands.find = commands.search;
     commands.cls = commands.clear;
+    commands.posts = commands.articles;
+    commands.статьи = commands.articles;
     commands.exit = commands.logout;
     commands['?'] = commands.help;
     return commands;
@@ -558,6 +578,7 @@ class Shell {
   cmdAbout() {
     this.println(`${c.red(this.data.title ?? 'КОНСОЛЬ')}`);
     this.println(c.grey(this.data.version ?? ''));
+    if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
     this.println('Ролевая корпоративная сеть. Всё происходящее здесь — игра: аккаунты хранятся');
     this.println('только в вашем браузере, «секретные» файлы придуманы.');
   }
@@ -792,6 +813,116 @@ class Shell {
     }
   }
 
+  /* ---------- site articles ---------- */
+
+  async loadArticles() {
+    if (this.articles) return this.articles;
+    if (!this.articlesUrl) return null;
+
+    try {
+      const response = await fetch(this.articlesUrl);
+      if (!response.ok) throw new Error(String(response.status));
+      this.articles = await response.json();
+    } catch {
+      this.println(c.red('Архив недоступен: не удалось загрузить статьи.'));
+      return null;
+    }
+    return this.articles;
+  }
+
+  async pickArticle(args, usage) {
+    const query = args.join(' ').trim();
+    if (!query) {
+      this.println(c.grey(`Использование: ${usage}  (список — articles)`));
+      return null;
+    }
+
+    const list = await this.loadArticles();
+    if (!list) return null;
+
+    if (/^\d+$/.test(query)) {
+      const byNumber = list[Number(query) - 1];
+      if (!byNumber) this.println(c.red('Нет статьи с таким номером.'));
+      return byNumber ?? null;
+    }
+
+    const needle = query.toLowerCase();
+    const hits = list.filter((article) => article.title.toLowerCase().includes(needle));
+    if (hits.length === 1) return hits[0];
+
+    this.println(hits.length === 0 ? c.red('Статья не найдена.') : c.red('Подходит несколько статей, уточните:'));
+    for (const hit of hits) this.println(`  ${c.bright(String(list.indexOf(hit) + 1))}. ${hit.title}`);
+    return null;
+  }
+
+  async cmdArticles() {
+    const list = await this.loadArticles();
+    if (!list) return;
+
+    this.println(c.bold(c.red(`Архив АнКо — статей: ${list.length}`)));
+    list.forEach((article, i) => {
+      const where = article.categories ? c.grey(`  [${article.categories}]`) : '';
+      this.println(`  ${c.bright(String(i + 1).padStart(2))}. ${article.title}${where}`);
+    });
+    this.println(c.grey('read <номер> — прочитать здесь, goto <номер> — открыть на сайте.'));
+  }
+
+  /** Word wrap to the terminal width, so words are not cut in the middle. */
+  wrap(text) {
+    const width = Math.max(20, (this.term.cols ?? 80) - 2);
+    return text
+      .split('\n')
+      .map((paragraph) => {
+        const lines = [];
+        let line = '';
+        for (const word of paragraph.split(' ')) {
+          if (line && [...line].length + 1 + [...word].length > width) {
+            lines.push(line);
+            line = word;
+          } else {
+            line = line ? `${line} ${word}` : word;
+          }
+        }
+        lines.push(line);
+        return lines.join('\n');
+      })
+      .join('\n');
+  }
+
+  async cmdRead(args) {
+    const article = await this.pickArticle(args, 'read <номер|слово>');
+    if (!article) return;
+
+    const decoder = document.createElement('textarea');
+    const body = article.text
+      .split('¶')
+      .map((line) => {
+        decoder.innerHTML = line;
+        return decoder.value.replace(/\s+/g, ' ').trim();
+      })
+      .filter(Boolean)
+      .join('\n\n');
+
+    this.println(c.red(`── ${article.title} ${'─'.repeat(Math.max(2, 40 - [...article.title].length))}`));
+    if (article.categories) this.println(c.grey(`Раздел: ${article.categories}`));
+    this.println('');
+    this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: интерактивная карта, схема или изображение)'));
+    this.println(c.red('─'.repeat(44)));
+    this.println(c.grey(`На сайте: goto ${article.title}`));
+    this.log({ action: 'article', target: article.title });
+  }
+
+  async cmdGoto(args) {
+    const article = await this.pickArticle(args, 'goto <номер|слово>');
+    if (!article) return;
+
+    this.println(c.green(`Открываю «${article.title}» ...`));
+    this.log({ action: 'article', target: article.title });
+    await this.flush();
+    await sleep(400);
+    window.location.href = article.url;
+  }
+
   cmdSound(args) {
     const mode = (args[0] ?? '').toLowerCase();
     if (!this.sound?.supported) {
@@ -843,6 +974,7 @@ class Shell {
     this.println('');
     this.println(c.bright(this.data.title ?? 'КОНСОЛЬ'));
     this.println(c.grey(this.data.version ?? ''));
+    if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
     await this.flush();
     this.println(c.grey('Проверка каналов связи ...... ') + c.green('OK'));
     await this.flush();
@@ -890,6 +1022,7 @@ export async function initConsole() {
   const shell = new Shell(data);
   const sound = new ConsoleSound({ startUrl: root.dataset.soundStart, loopUrl: root.dataset.soundLoop });
   shell.sound = sound;
+  shell.articlesUrl = root.dataset.articles ?? '';
   const term = new WTerm(screen, {
     cursorBlink: true,
     onData: (input) => shell.handleData(input)

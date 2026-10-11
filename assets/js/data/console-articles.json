@@ -1,0 +1,37 @@
+---
+layout: compress
+---
+
+{%- comment -%}
+  Статьи сайта для вкладки «Консоль»: команды articles / read / goto.
+  Абзацы помечаются маркером ¶ — консоль превращает его в перенос строки.
+{%- endcomment -%}
+
+[
+  {%- assign sep = false -%}
+  {%- for post in site.posts -%}
+    {%- if post.categories contains 'Blogging' -%}{%- continue -%}{%- endif -%}
+    {%- assign text = post.content
+      | replace: '</p>', '¶'
+      | replace: '</h1>', '¶'
+      | replace: '</h2>', '¶'
+      | replace: '</h3>', '¶'
+      | replace: '</h4>', '¶'
+      | replace: '</li>', '¶'
+      | replace: '</tr>', '¶'
+      | replace: '<br />', '¶'
+      | replace: '<br>', '¶'
+      | strip_html
+      | strip_newlines
+    -%}
+    {%- if sep -%},{%- endif -%}
+    {%- assign sep = true -%}
+    {
+      "title": {{ post.title | jsonify }},
+      "url": {{ post.url | relative_url | jsonify }},
+      "categories": {{ post.categories | join: ', ' | jsonify }},
+      "description": {{ post.description | default: '' | jsonify }},
+      "text": {{ text | jsonify }}
+    }
+  {%- endfor -%}
+]
