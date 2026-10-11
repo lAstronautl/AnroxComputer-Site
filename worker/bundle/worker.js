@@ -118,6 +118,7 @@ async function publicUser(env, row) {
 
   return {
     name: row.name,
+    realName: row.real_name,
     department: row.department,
     baseLevel: row.base_level,
     level: row.level,
@@ -155,6 +156,12 @@ async function authenticate(request, env) {
 }
 
 /* ---------- admin helpers ---------- */
+
+/** Real (out-of-game) name: 2–60 letters, digits, spaces and . , ' -. Null when invalid. */
+function cleanRealName(value) {
+  const name = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return name.length >= 2 && name.length <= 60 && /^[\p{L}\p{N} .,'-]+$/u.test(name) ? name : null;
+}
 
 /** A known department id, or a free-text name (lowest working level). Null when neither is valid. */
 function resolveDepartment(body) {
@@ -207,24 +214,28 @@ async function manageable(env, actor, name) {
 
 /* ---------- routes ---------- */
 
+/** Open registration is closed: only the very first account can be created this way (it becomes an administrator). */
 async function register(request, env) {
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
+  if (count.n > 0) throw new ApiError(403, 'closed');
+
   const body = await readBody(request);
   const name = String(body.name ?? '').trim();
   const password = String(body.password ?? '');
   const department = resolveDepartment(body);
+  const realName = body.realName ? cleanRealName(body.realName) : '';
 
   if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
   if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
   if (!department) throw new ApiError(400, 'bad-department');
+  if (realName === null) throw new ApiError(400, 'bad-realname');
 
   const key = userKey(name);
-  if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');
-
   const salt = randomHex(16);
   await env.DB.prepare(
-    'INSERT INTO users (key, name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (key, name, real_name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
-    .bind(key, name, department.name, salt, await hashPassword(password, salt), department.level, department.level, Date.now())
+    .bind(key, name, realName, department.name, salt, await hashPassword(password, salt), ADMIN_LEVEL, ADMIN_LEVEL, Date.now())
     .run();
 
   const row = await env.DB.prepare('SELECT * FROM users WHERE key = ?').bind(key).first();
@@ -318,9 +329,11 @@ async function route(request, env) {
     const name = String(body.name ?? '').trim();
     const password = String(body.password ?? '');
     const department = resolveDepartment(body);
+    const realName = cleanRealName(body.realName);
     const level = parseLevel(body.level, department ? Math.min(department.level, row.level) : undefined);
 
     if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
+    if (!realName) throw new ApiError(400, 'bad-realname');
     if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
     if (!department) throw new ApiError(400, 'bad-department');
     if (level === null) throw new ApiError(400, 'bad-level');
@@ -336,9 +349,9 @@ async function route(request, env) {
 
     const salt = randomHex(16);
     await env.DB.prepare(
-      'INSERT INTO users (key, name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO users (key, name, real_name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-      .bind(key, name, department.name, salt, await hashPassword(password, salt), department.level, level, Date.now())
+      .bind(key, name, realName, department.name, salt, await hashPassword(password, salt), department.level, level, Date.now())
       .run();
     await addAttempt(env, row.key, 'adduser', `${name} L${level}`);
     return { created: { name, department: department.name, level } };
@@ -409,8 +422,28 @@ async function route(request, env) {
   }
 
   if (path === '/api/staff' && method === 'GET') {
-    const { results } = await env.DB.prepare('SELECT name, department, level FROM users ORDER BY level DESC, name COLLATE NOCASE ASC').all();
-    return { staff: results };
+    // real names are only sent to administrators; everyone else gets none (the console shows scrambled symbols)
+    const { results } = await env.DB.prepare('SELECT name, real_name, department, level FROM users ORDER BY level DESC, name COLLATE NOCASE ASC').all();
+    const seeReal = row.level >= ADMIN_LEVEL;
+    return { staff: results.map(({ name, real_name: realName, department, level }) => ({ name, department, level, ...(seeReal ? { realName } : {}) })) };
+  }
+
+  if (path === '/api/setname' && method === 'POST') {
+    // your own real name, or (administrators) the real name of someone below you
+    const body = await readBody(request);
+    const realName = cleanRealName(body.realName);
+    if (!realName) throw new ApiError(400, 'bad-realname');
+
+    const own = !body.name || userKey(String(body.name)) === row.key;
+    let target = row;
+    if (!own) {
+      requireAdmin(row);
+      target = await manageable(env, row, body.name);
+    }
+
+    await env.DB.prepare('UPDATE users SET real_name = ? WHERE key = ?').bind(realName, target.key).run();
+    await addAttempt(env, row.key, 'setname', target.name);
+    return { target: { name: target.name } };
   }
 
   if (path === '/api/promote' && method === 'POST') {

@@ -86,7 +86,7 @@ export async function hashPassword(password, salt) {
   return h.toString(16);
 }
 
-export async function createUser({ name, department, password, level }) {
+export async function createUser({ name, realName = '', department, password, level }) {
   const users = loadUsers();
   const key = userKey(name);
   if (users[key]) return null;
@@ -94,6 +94,7 @@ export async function createUser({ name, department, password, level }) {
   const salt = randomSalt();
   users[key] = {
     name: name.trim(),
+    realName,
     department,
     salt,
     hash: await hashPassword(password, salt),
