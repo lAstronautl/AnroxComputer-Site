@@ -140,6 +140,17 @@ async function authenticate(request, env) {
 
 /* ---------- admin helpers ---------- */
 
+/** A known department id, or a free-text name (lowest working level). Null when neither is valid. */
+function resolveDepartment(body) {
+  const known = DEPARTMENTS[String(body.department ?? '')];
+  if (known) return known;
+
+  const name = String(body.customDepartment ?? '').replace(/\s+/g, ' ').trim();
+  // eslint-disable-next-line no-control-regex
+  if (name.length < 2 || name.length > 60 || /[\x00-\x1f\x7f]/.test(name)) return null;
+  return { name, level: 1 };
+}
+
 function requireAdmin(row) {
   if (row.level < ADMIN_LEVEL) throw new ApiError(403, 'forbidden');
 }
@@ -184,7 +195,7 @@ async function register(request, env) {
   const body = await readBody(request);
   const name = String(body.name ?? '').trim();
   const password = String(body.password ?? '');
-  const department = DEPARTMENTS[String(body.department ?? '')];
+  const department = resolveDepartment(body);
 
   if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
   if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
@@ -290,7 +301,7 @@ async function route(request, env) {
     const body = await readBody(request);
     const name = String(body.name ?? '').trim();
     const password = String(body.password ?? '');
-    const department = DEPARTMENTS[String(body.department ?? '')];
+    const department = resolveDepartment(body);
     const level = parseLevel(body.level, department ? Math.min(department.level, row.level) : undefined);
 
     if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
@@ -419,7 +430,7 @@ async function route(request, env) {
     requireAdmin(row);
     const body = await readBody(request);
     const target = await manageable(env, row, body.name);
-    const department = DEPARTMENTS[String(body.department ?? '')];
+    const department = resolveDepartment(body);
     if (!department) throw new ApiError(400, 'bad-department');
 
     await env.DB.prepare('UPDATE users SET department = ? WHERE key = ?').bind(department.name, target.key).run();

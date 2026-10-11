@@ -436,7 +436,7 @@ class Shell {
       forbidden: 'ДОСТУП ЗАПРЕЩЁН. Недостаточный уровень допуска.',
       'too-high': 'Нельзя выдать уровень выше собственного.',
       'bad-level': 'Уровень — целое число от 0.',
-      'bad-department': 'Нет такого отдела.',
+      'bad-department': 'Нет такого отдела. Название: от 2 до 60 символов.',
       'not-found': 'Сотрудник не найден.',
       'not-higher': 'Это не повышение: у сотрудника уже такой или более высокий уровень.',
       self: 'Над собой эта команда не действует.',
@@ -733,16 +733,8 @@ class Shell {
       this.println(c.red('Позывной: 2–24 символа, только буквы, цифры, «_» и «-».'));
       return;
     }
-    const departments = this.data.departments ?? [];
-    this.println(c.amber('Отдел:'));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    const pick = await this.ask(c.amber('Номер отдела: '));
-    if (pick == null) return;
-    const department = departments[Number(pick.trim()) - 1];
-    if (!department) {
-      this.println(c.red('Нет такого отдела.'));
-      return;
-    }
+    const department = await this.askDepartment('Отдел');
+    if (!department) return;
 
     const password = await this.ask(c.amber('Пароль (от 4 символов): '), { secret: true });
     if (password == null) return;
@@ -912,6 +904,36 @@ class Shell {
       this.println(`  ${this.tag(file)} ${c.bright(file.path)}  ${c.grey(file.title ?? '')}`);
       if (snippet) this.println(`      ${c.grey(snippet)}`);
     }
+  }
+
+  /**
+   * Department chosen from the list by number, or written in by hand.
+   * Returns null when cancelled or invalid (the reason is already printed).
+   */
+  async askDepartment(title) {
+    const departments = this.data.departments ?? [];
+    this.println(c.amber(`${title}:`));
+    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
+    this.println(c.grey('Выберите номер или впишите своё название отдела.'));
+
+    const answer = await this.ask(c.amber('Отдел: '));
+    if (answer == null) return null;
+
+    const text = answer.replace(/\s+/g, ' ').trim();
+    if (/^\d+$/.test(text)) {
+      const listed = departments[Number(text) - 1];
+      if (!listed) this.failure('bad-department');
+      return listed ?? null;
+    }
+
+    if (text.length < 2 || text.length > 60) {
+      this.println(c.red('Название отдела: от 2 до 60 символов.'));
+      return null;
+    }
+
+    // a custom name has no preset level: the employee starts at the lowest working level
+    const known = departments.find((d) => d.name.toLowerCase() === text.toLowerCase());
+    return known ?? { custom: true, name: text, level: 1 };
   }
 
   /** Several lines of text; an empty line sends. Returns null when cancelled. */
@@ -1102,16 +1124,8 @@ class Shell {
       return;
     }
 
-    const departments = this.data.departments ?? [];
-    this.println(c.amber('Отдел:'));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    const pick = await this.ask(c.amber('Номер отдела: '));
-    if (pick == null) return;
-    const department = departments[Number(pick.trim()) - 1];
-    if (!department) {
-      this.failure('bad-department');
-      return;
-    }
+    const department = await this.askDepartment('Отдел');
+    if (!department) return;
 
     const maxLevel = this.user.level;
     const defaultLevel = Math.min(department.level, maxLevel);
@@ -1235,16 +1249,8 @@ class Shell {
       return;
     }
 
-    const departments = this.data.departments ?? [];
-    this.println(c.amber('Новый отдел:'));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    const pick = await this.ask(c.amber('Номер отдела: '));
-    if (pick == null) return;
-    const department = departments[Number(pick.trim()) - 1];
-    if (!department) {
-      this.failure('bad-department');
-      return;
-    }
+    const department = await this.askDepartment('Новый отдел');
+    if (!department) return;
 
     await this.chain;
     const result = await this.backend.transfer(this.user, name, department);
