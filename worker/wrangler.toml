@@ -1,0 +1,15 @@
+name = "anco-console"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Сюда подставьте id базы, который выдаст `wrangler d1 create anroxcomputers` (см. README.md)
+[[d1_databases]]
+binding = "DB"
+database_name = "anroxcomputers"
+database_id = "56693669-57d6-41fd-bfa2-d19458c43d59"
+
+[vars]
+# Адреса сайта, которым разрешено обращаться к API (через запятую, без слэша в конце)
+ALLOWED_ORIGINS = "https://lastronautl.github.io"
+# true — разрешить ещё и localhost (для локальной проверки сайта); в боевой версии можно убрать
+ALLOW_LOCALHOST = "true"

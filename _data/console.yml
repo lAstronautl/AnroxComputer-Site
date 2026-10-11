@@ -9,6 +9,10 @@ title: "АНКО // ЗАКРЫТАЯ КОРПОРАТИВНАЯ СЕТЬ"
 version: "версия: Anrox Citadel-Sys"
 subtitle: "METADATA COMPRESSOR"
 
+# Адрес API (Cloudflare Worker из папки worker/). Пусто — аккаунты и журнал хранятся
+# только в браузере игрока. Инструкция: worker/README.md
+api_url: "https://anroxcomputers.astronaut0space.workers.dev"
+
 # строки проверок при запуске терминала (последний столбец — результат)
 boot_checks:
   - "Проверка каналов связи"

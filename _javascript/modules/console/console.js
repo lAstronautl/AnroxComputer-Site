@@ -7,17 +7,8 @@
 
 import { WTerm } from '@wterm/dom';
 import { ESC, c, crlf, visibleLength } from './ansi';
-import {
-  buildFs,
-  createUser,
-  deleteUser,
-  getSessionName,
-  getUser,
-  logAttempt,
-  setSessionName,
-  updateUser,
-  verifyUser
-} from './storage';
+import { buildFs } from './storage';
+import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
 import { ConsoleSound } from './sound';
 
@@ -61,6 +52,8 @@ class Shell {
     this.askState = null;
     this.keyHandler = null;
     this.busy = true;
+    this.backend = createBackend(data);
+    this.chain = Promise.resolve(); // account calls run one after another, so a refresh never overtakes a write
     this.sound = null;
     this.articlesUrl = '';
     this.articles = null;
@@ -383,28 +376,46 @@ class Shell {
   signIn(user, { silent = false } = {}) {
     this.user = user;
     this.cwd = '/';
-    setSessionName(user.name);
     if (silent) return;
 
     this.println(c.green(`Вход выполнен. Добро пожаловать, ${user.name}.`));
     this.println(`Допуск: ${c.bright(this.levelName(user.level))} (L${user.level}). Введите ${c.amber('help')}.`);
   }
 
+  /** Queue an account call; the result (a user) replaces the in-memory copy. */
+  sync(task) {
+    this.chain = this.chain.then(async () => {
+      const user = await task(this.user);
+      if (user && this.user) this.user = user;
+    }).catch(() => {});
+    return this.chain;
+  }
+
   refreshUser() {
-    if (!this.user) return;
-    this.user = getUser(this.user.name) ?? this.user;
+    if (!this.user) return Promise.resolve();
+    return this.sync((user) => this.backend.refresh(user));
   }
 
   saveStats(patch) {
-    if (!this.user) return;
-    const stats = { ...(this.user.stats ?? {}), ...patch };
-    this.user = updateUser(this.user.name, { stats });
+    if (!this.user) return Promise.resolve();
+    return this.sync((user) => this.backend.saveStats(user, patch));
   }
 
   log(entry) {
-    if (!this.user) return;
-    logAttempt(this.user.name, entry);
-    this.refreshUser(); // keep the in-memory copy in step with what was just saved
+    if (!this.user) return Promise.resolve();
+    return this.sync((user) => this.backend.log(user, entry));
+  }
+
+  failure(error) {
+    const text = {
+      network: 'Сервер недоступен. Попробуйте позже.',
+      rate: 'Слишком много попыток. Подождите минуту.',
+      taken: 'Сотрудник с таким позывным уже зарегистрирован.',
+      credentials: 'Неверный позывной или пароль.',
+      'bad-name': 'Позывной: 2–24 символа, только буквы, цифры, «_» и «-».',
+      'bad-password': 'Пароль: от 4 до 100 символов.'
+    }[error] ?? 'Сбой сервера. Попробуйте позже.';
+    this.println(c.red(text));
   }
 
   requireLogin() {
@@ -597,11 +608,6 @@ class Shell {
       this.println(c.red('Позывной: 2–24 символа, только буквы, цифры, «_» и «-».'));
       return;
     }
-    if (getUser(name)) {
-      this.println(c.red('Сотрудник с таким позывным уже зарегистрирован.'));
-      return;
-    }
-
     const departments = this.data.departments ?? [];
     this.println(c.amber('Отдел:'));
     departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
@@ -626,14 +632,14 @@ class Shell {
       return;
     }
 
-    const user = await createUser({ name, department: department.name, password, level: department.level });
-    if (!user) {
-      this.println(c.red('Не удалось создать аккаунт.'));
+    const result = await this.backend.register({ name, department, password });
+    if (result.error) {
+      this.failure(result.error);
       return;
     }
 
     this.println(c.green('Сотрудник внесён в реестр.'));
-    this.signIn(user);
+    this.signIn(result.user);
   }
 
   async cmdLogin() {
@@ -647,19 +653,20 @@ class Shell {
     const password = await this.ask(c.amber('Пароль: '), { secret: true });
     if (password == null) return;
 
-    const user = await verifyUser(name, password);
-    if (!user) {
-      this.println(c.red('Неверный позывной или пароль.'));
+    const result = await this.backend.login(name, password);
+    if (result.error) {
+      this.failure(result.error);
       return;
     }
-    this.signIn(user);
+    this.signIn(result.user);
   }
 
-  cmdLogout() {
+  async cmdLogout() {
     this.println(c.grey(`Сеанс ${this.user.name} завершён.`));
+    await this.chain;
+    await this.backend.logout();
     this.user = null;
     this.cwd = '/';
-    setSessionName(null);
   }
 
   cmdWhoami() {
@@ -778,33 +785,32 @@ class Shell {
     }
   }
 
-  cmdAuth(args) {
+  async cmdAuth(args) {
     const typed = args.join(' ').trim().toUpperCase();
     if (!typed) {
       this.println(c.grey('Использование: auth <КОД>'));
       return;
     }
 
-    const entry = (this.data.codes ?? []).find((item) => item.code.toUpperCase() === typed);
-    if (!entry) {
+    await this.chain;
+    const result = await this.backend.auth(this.user, typed);
+
+    if (result.error === 'invalid') {
       this.println(c.red('КОД НЕДЕЙСТВИТЕЛЕН.'));
-      this.log({ action: 'bad-code', target: typed });
-      return;
-    }
-
-    if (entry.level <= this.user.level) {
+    } else if (result.error === 'already') {
       this.println(c.grey('У вас уже есть этот допуск или выше.'));
-      return;
+    } else if (result.error) {
+      this.failure(result.error);
+    } else {
+      this.user = result.user;
+      this.println(c.green(`ДОПУСК ПОВЫШЕН: ${this.levelName(result.user.level)} (L${result.user.level}).`));
     }
 
-    const codes = [...new Set([...(this.user.codes ?? []), entry.code])];
-    this.user = updateUser(this.user.name, { level: entry.level, codes });
-    this.println(c.green(`ДОПУСК ПОВЫШЕН: ${this.levelName(entry.level)} (L${entry.level}).`));
-    this.log({ action: 'auth', target: `L${entry.level}` });
+    await this.refreshUser(); // pick up the journal entry the backend just wrote
   }
 
-  cmdLog() {
-    this.refreshUser();
+  async cmdLog() {
+    await this.refreshUser();
     const attempts = this.user.attempts ?? [];
     if (attempts.length === 0) {
       this.println(c.grey('Журнал пуст.'));
@@ -932,10 +938,10 @@ class Shell {
     }
 
     await sleep(500);
-    deleteUser(name);
+    await this.chain;
+    await this.backend.remove(this.user);
     this.user = null;
     this.cwd = '/';
-    setSessionName(null);
     this.println(c.bold(c.red(`СОТРУДНИК ${name} СНЯТ С ДОЛЖНОСТИ. ДОСТУП АННУЛИРОВАН.`)));
     this.println(c.grey('Аккаунт удалён. Для нового доступа: register.'));
   }
@@ -1014,8 +1020,7 @@ class Shell {
       await sleep(120 + Math.random() * 180);
     }
 
-    const stored = getSessionName();
-    const user = stored ? getUser(stored) : null;
+    const user = await this.backend.restore();
     if (user) {
       this.signIn(user, { silent: true });
       this.println(c.green(`Сеанс восстановлен: ${user.name} (${this.levelName(user.level)}).`));
