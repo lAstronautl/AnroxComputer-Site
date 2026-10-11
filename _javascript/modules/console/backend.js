@@ -10,7 +10,9 @@ import {
   deleteUser,
   getSessionName,
   getUser,
+  loadUsers,
   logAttempt,
+  setPassword,
   setSessionName,
   updateUser,
   verifyUser
@@ -61,18 +63,93 @@ export class LocalBackend {
     return updateUser(user.name, { stats: { ...(user.stats ?? {}), ...patch } }) ?? user;
   }
 
-  async auth(user, code) {
-    const entry = (this.data.codes ?? []).find((item) => item.code.toUpperCase() === code.toUpperCase());
-    if (!entry) {
-      logAttempt(user.name, { action: 'bad-code', target: code });
-      return { error: 'invalid' };
-    }
-    if (entry.level <= user.level) return { error: 'already' };
-
-    const codes = [...new Set([...(user.codes ?? []), entry.code])];
-    updateUser(user.name, { level: entry.level, codes });
-    logAttempt(user.name, { action: 'auth', target: `L${entry.level}` });
+  async unlock(user, keyword) {
+    if ((user.codes ?? []).includes(keyword)) return { error: 'already' };
+    updateUser(user.name, { codes: [...(user.codes ?? []), keyword] });
+    logAttempt(user.name, { action: 'auth', target: keyword });
     return { user: getUser(user.name) };
+  }
+
+  async addUser(actor, { name, department, level, password }) {
+    const admin = this.data.admin_level ?? 10;
+    if (actor.level < admin) return { error: 'forbidden' };
+    if (level > actor.level) return { error: 'too-high' };
+
+    const user = await createUser({ name, department: department.name, password, level });
+    if (!user) return { error: 'taken' };
+    logAttempt(actor.name, { action: 'adduser', target: `${user.name} L${level}` });
+    return { created: { name: user.name, department: user.department, level } };
+  }
+
+  /** The employee an admin may manage: exists, is not the admin, ranks below them. */
+  manageable(actor, name) {
+    if (actor.level < (this.data.admin_level ?? 10)) return { error: 'forbidden' };
+    const target = getUser(name);
+    if (!target) return { error: 'not-found' };
+    if (target.name === actor.name) return { error: 'self' };
+    if (target.level >= actor.level) return { error: 'above' };
+    return { target };
+  }
+
+  async staff() {
+    return {
+      staff: Object.values(loadUsers())
+        .map(({ name, department, level }) => ({ name, department, level }))
+        .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, 'ru'))
+    };
+  }
+
+  async promote(actor, name, level) {
+    const { target, error } = this.manageable(actor, name);
+    if (error) return { error };
+
+    const wanted = level ?? target.level + 1;
+    if (wanted > actor.level) return { error: 'too-high' };
+    if (wanted <= target.level) return { error: 'not-higher' };
+
+    updateUser(target.name, { level: wanted });
+    logAttempt(actor.name, { action: 'promote', target: `${target.name} L${target.level}→L${wanted}` });
+    return { target: { name: target.name, level: wanted } };
+  }
+
+  async demote(actor, name, level) {
+    const { target, error } = this.manageable(actor, name);
+    if (error) return { error };
+
+    const wanted = level ?? target.level - 1;
+    if (wanted < 0) return { error: 'bad-level' };
+    if (wanted >= target.level) return { error: 'not-lower' };
+
+    updateUser(target.name, { level: wanted });
+    logAttempt(actor.name, { action: 'demote', target: `${target.name} L${target.level}→L${wanted}` });
+    return { target: { name: target.name, level: wanted } };
+  }
+
+  async transfer(actor, name, department) {
+    const { target, error } = this.manageable(actor, name);
+    if (error) return { error };
+
+    updateUser(target.name, { department: department.name });
+    logAttempt(actor.name, { action: 'transfer', target: `${target.name} → ${department.name}` });
+    return { target: { name: target.name, department: department.name } };
+  }
+
+  async resetPassword(actor, name, password) {
+    const { target, error } = this.manageable(actor, name);
+    if (error) return { error };
+
+    await setPassword(target.name, password);
+    logAttempt(actor.name, { action: 'resetpass', target: target.name });
+    return { target: { name: target.name } };
+  }
+
+  async fire(actor, name) {
+    const { target, error } = this.manageable(actor, name);
+    if (error) return { error };
+
+    deleteUser(target.name);
+    logAttempt(actor.name, { action: 'fire', target: `${target.name} L${target.level}` });
+    return { target: { name: target.name } };
   }
 
   async remove(user) {
@@ -162,8 +239,36 @@ export class RemoteBackend {
     return result.user ?? user;
   }
 
-  async auth(user, code) {
-    return this.call('POST', '/api/auth', { code });
+  async unlock(user, keyword) {
+    return this.call('POST', '/api/unlock', { keyword });
+  }
+
+  async addUser(actor, { name, department, level, password }) {
+    return this.call('POST', '/api/adduser', { name, department: department.id, level, password });
+  }
+
+  async staff() {
+    return this.call('GET', '/api/staff');
+  }
+
+  async promote(actor, name, level) {
+    return this.call('POST', '/api/promote', { name, level });
+  }
+
+  async demote(actor, name, level) {
+    return this.call('POST', '/api/demote', { name, level });
+  }
+
+  async transfer(actor, name, department) {
+    return this.call('POST', '/api/transfer', { name, department: department.id });
+  }
+
+  async resetPassword(actor, name, password) {
+    return this.call('POST', '/api/resetpass', { name, password });
+  }
+
+  async fire(actor, name) {
+    return this.call('POST', '/api/fire', { name });
   }
 
   async remove() {

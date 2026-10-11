@@ -156,8 +156,16 @@ class Shell {
     this.raw(`${ESC}[2J${ESC}[3J${ESC}[H`);
   }
 
+  get adminLevel() {
+    return this.data.admin_level ?? 10;
+  }
+
+  isAdmin() {
+    return (this.user?.level ?? 0) >= this.adminLevel;
+  }
+
   levelName(level) {
-    return this.data.levels?.[level] ?? `L${level}`;
+    return this.data.levels?.[level] ?? `УРОВЕНЬ ${level}`;
   }
 
   /* ---------- line editor ---------- */
@@ -342,7 +350,7 @@ class Shell {
     let prefix = '';
 
     if (parts.length === 1) {
-      options = Object.keys(this.commands).filter((name) => !this.commands[name].hidden && name.startsWith(word.toLowerCase()));
+      options = Object.keys(this.commands).filter((name) => !this.commands[name].hidden && !(this.commands[name].admin && !this.isAdmin()) && name.startsWith(word.toLowerCase()));
     } else {
       const slash = word.lastIndexOf('/');
       prefix = word.slice(0, slash + 1);
@@ -413,7 +421,17 @@ class Shell {
       taken: 'Сотрудник с таким позывным уже зарегистрирован.',
       credentials: 'Неверный позывной или пароль.',
       'bad-name': 'Позывной: 2–24 символа, только буквы, цифры, «_» и «-».',
-      'bad-password': 'Пароль: от 4 до 100 символов.'
+      'bad-password': 'Пароль: от 4 до 100 символов.',
+      forbidden: 'ДОСТУП ЗАПРЕЩЁН. Недостаточный уровень допуска.',
+      'too-high': 'Нельзя выдать уровень выше собственного.',
+      'bad-level': 'Уровень — целое число от 0.',
+      'bad-department': 'Нет такого отдела.',
+      'not-found': 'Сотрудник не найден.',
+      'not-higher': 'Это не повышение: у сотрудника уже такой или более высокий уровень.',
+      self: 'Над собой эта команда не действует.',
+      above: 'Нельзя управлять сотрудником равного или более высокого уровня.',
+      'bad-keyword': 'Некорректное ключевое слово.',
+      'not-lower': 'Это не понижение: у сотрудника уже такой или более низкий уровень.'
     }[error] ?? 'Сбой сервера. Попробуйте позже.';
     this.println(c.red(text));
   }
@@ -424,8 +442,19 @@ class Shell {
     return false;
   }
 
+  hasKeyword(file) {
+    if (!file.keyword || this.isAdmin()) return true;
+    return (this.user?.codes ?? []).includes(file.keyword.toUpperCase());
+  }
+
   canRead(file) {
-    return (this.user?.level ?? 0) >= file.level;
+    return (this.user?.level ?? 0) >= file.level && this.hasKeyword(file);
+  }
+
+  /** Keywords the current employee has not entered yet (hints for the hacking game). */
+  closedKeywords() {
+    const known = this.user?.codes ?? [];
+    return [...new Set(this.fs.files.map((file) => file.keyword?.toUpperCase()).filter(Boolean))].filter((word) => !known.includes(word));
   }
 
   findFile(arg) {
@@ -457,6 +486,11 @@ class Shell {
     }
 
     if (command.auth && !this.requireLogin()) return Promise.resolve();
+
+    if (command.admin && !this.isAdmin()) {
+      this.println(c.red(`ДОСТУП ЗАПРЕЩЁН. Требуется допуск: ${this.levelName(this.adminLevel)} (L${this.adminLevel}).`));
+      return Promise.resolve();
+    }
     return command.run(args);
   }
 
@@ -523,9 +557,50 @@ class Shell {
         run: (args) => this.cmdSearch(args)
       },
       auth: {
-        desc: 'ввести код допуска (auth <КОД>)',
+        desc: 'ввести ключевое слово (auth <СЛОВО>)',
         auth: true,
         run: (args) => this.cmdAuth(args)
+      },
+      adduser: {
+        desc: 'добавить сотрудника (adduser [позывной])',
+        auth: true,
+        admin: true,
+        run: (args) => this.cmdAddUser(args)
+      },
+      staff: {
+        desc: 'весь персонал: отдел и уровень',
+        auth: true,
+        run: () => this.cmdStaff()
+      },
+      demote: {
+        desc: 'понизить сотрудника (demote <позывной> [уровень])',
+        auth: true,
+        admin: true,
+        run: (args) => this.cmdDemote(args)
+      },
+      transfer: {
+        desc: 'перевести в другой отдел (transfer <позывной>)',
+        auth: true,
+        admin: true,
+        run: (args) => this.cmdTransfer(args)
+      },
+      resetpass: {
+        desc: 'сменить пароль сотруднику (resetpass <позывной>)',
+        auth: true,
+        admin: true,
+        run: (args) => this.cmdResetPass(args)
+      },
+      fire: {
+        desc: 'уволить сотрудника (fire <позывной>)',
+        auth: true,
+        admin: true,
+        run: (args) => this.cmdFire(args)
+      },
+      promote: {
+        desc: 'повысить сотрудника (promote <позывной> [уровень])',
+        auth: true,
+        admin: true,
+        run: (args) => this.cmdPromote(args)
       },
       log: {
         desc: 'журнал ваших обращений',
@@ -572,6 +647,14 @@ class Shell {
     commands.open = commands.cat;
     commands.find = commands.search;
     commands.cls = commands.clear;
+    commands.useradd = commands.adduser;
+    commands.unlock = commands.auth;
+    commands.ключ = commands.auth;
+    commands.промоушен = commands.promote;
+    commands.персонал = commands.staff;
+    commands.понизить = commands.demote;
+    commands.перевод = commands.transfer;
+    commands.уволить = commands.fire;
     commands.флешбенг = commands.flashbang;
     commands.posts = commands.articles;
     commands.статьи = commands.articles;
@@ -584,7 +667,7 @@ class Shell {
     const shown = new Set();
     this.println(c.bold(c.red('Команды:')));
     for (const [name, command] of Object.entries(this.commands)) {
-      if (shown.has(command) || command.hidden || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?'].includes(name)) continue;
+      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?'].includes(name)) continue;
       shown.add(command);
       this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}${command.auth && !this.user ? c.grey('  [после входа]') : ''}`);
     }
@@ -681,7 +764,7 @@ class Shell {
 
   tag(file) {
     const ok = this.canRead(file);
-    const label = `L${file.level}`;
+    const label = file.keyword ? `L${file.level}+ключ` : `L${file.level}`;
     return ok ? c.green(`[${label}]`) : c.red(`[${label} ✗]`);
   }
 
@@ -742,7 +825,11 @@ class Shell {
     }
 
     if (!this.canRead(file)) {
-      this.println(c.red(`ДОСТУП ЗАПРЕЩЁН. Требуется допуск: ${this.levelName(file.level)} (L${file.level}).`));
+      if ((this.user?.level ?? 0) < file.level) {
+        this.println(c.red(`ДОСТУП ЗАПРЕЩЁН. Требуется допуск: ${this.levelName(file.level)} (L${file.level}).`));
+      } else {
+        this.println(c.red('ДОСТУП ЗАПРЕЩЁН. Файл защищён ключевым словом.') + c.grey(' Введите: auth <СЛОВО>'));
+      }
       this.println(c.grey('Попытка обращения записана в журнал.'));
       this.log({ action: 'denied', target: file.path });
       return;
@@ -773,7 +860,7 @@ class Shell {
     for (const file of hits) {
       if (!this.canRead(file)) {
         // classified entries show up in the index, but their contents stay hidden
-        this.println(`  ${c.red(`[ЗАСЕКРЕЧЕНО L${file.level}]`)} ${file.path}  ${c.red('██████████')}`);
+        this.println(`  ${c.red(`[ЗАСЕКРЕЧЕНО L${file.level}${file.keyword ? '+ключ' : ''}]`)} ${file.path}  ${c.red('██████████')}`);
         continue;
       }
 
@@ -788,25 +875,251 @@ class Shell {
   async cmdAuth(args) {
     const typed = args.join(' ').trim().toUpperCase();
     if (!typed) {
-      this.println(c.grey('Использование: auth <КОД>'));
+      this.println(c.grey('Использование: auth <СЛОВО>'));
+      return;
+    }
+
+    const opens = this.fs.files.filter((file) => file.keyword?.toUpperCase() === typed);
+    if (opens.length === 0) {
+      this.println(c.red('КЛЮЧЕВОЕ СЛОВО НЕДЕЙСТВИТЕЛЬНО.'));
+      await this.log({ action: 'bad-code', target: typed });
       return;
     }
 
     await this.chain;
-    const result = await this.backend.auth(this.user, typed);
-
-    if (result.error === 'invalid') {
-      this.println(c.red('КОД НЕДЕЙСТВИТЕЛЕН.'));
-    } else if (result.error === 'already') {
-      this.println(c.grey('У вас уже есть этот допуск или выше.'));
-    } else if (result.error) {
+    const result = await this.backend.unlock(this.user, typed);
+    if (result.error === 'already') {
+      this.println(c.grey('Это слово уже введено.'));
+      return;
+    }
+    if (result.error) {
       this.failure(result.error);
-    } else {
-      this.user = result.user;
-      this.println(c.green(`ДОПУСК ПОВЫШЕН: ${this.levelName(result.user.level)} (L${result.user.level}).`));
+      return;
     }
 
-    await this.refreshUser(); // pick up the journal entry the backend just wrote
+    this.user = result.user;
+    this.println(c.green('КЛЮЧЕВОЕ СЛОВО ПРИНЯТО. ОТКРЫТЫ ФАЙЛЫ:'));
+    for (const file of opens) {
+      const need = (this.user.level ?? 0) < file.level ? c.grey(`  (нужен допуск L${file.level})`) : '';
+      this.println(`  ${c.bright(file.path)}${need}`);
+    }
+    await this.refreshUser();
+  }
+
+  /** Level typed by the player: a whole number, or null when it is not one. */
+  parseLevel(text) {
+    const value = String(text ?? '').trim();
+    return /^\d{1,3}$/.test(value) ? Number(value) : null;
+  }
+
+  async cmdAddUser(args) {
+    this.println(c.bold(c.red('=== ДОБАВЛЕНИЕ СОТРУДНИКА ===')) + c.grey('  (Ctrl+C — отмена)'));
+
+    const name = (args[0] ?? (await this.ask(c.amber('Позывной: '))))?.trim();
+    if (!name) return;
+    if (!NAME_RULE.test(name)) {
+      this.failure('bad-name');
+      return;
+    }
+
+    const departments = this.data.departments ?? [];
+    this.println(c.amber('Отдел:'));
+    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
+    const pick = await this.ask(c.amber('Номер отдела: '));
+    if (pick == null) return;
+    const department = departments[Number(pick.trim()) - 1];
+    if (!department) {
+      this.failure('bad-department');
+      return;
+    }
+
+    const maxLevel = this.user.level;
+    const levelText = await this.ask(c.amber(`Уровень допуска (0–${maxLevel}, Enter — ${department.level}): `));
+    if (levelText == null) return;
+    const level = levelText.trim() ? this.parseLevel(levelText) : department.level;
+    if (level == null) {
+      this.failure('bad-level');
+      return;
+    }
+    if (level > maxLevel) {
+      this.failure('too-high');
+      return;
+    }
+
+    const password = await this.ask(c.amber('Пароль сотрудника (от 4 символов): '), { secret: true });
+    if (password == null) return;
+    if (password.length < 4) {
+      this.failure('bad-password');
+      return;
+    }
+
+    const result = await this.backend.addUser(this.user, { name, department, level, password });
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+
+    this.println(c.green(`Сотрудник ${result.created.name} внесён в реестр: ${result.created.department}, `) +
+      c.bright(`${this.levelName(result.created.level)} (L${result.created.level})`) + c.green('.'));
+    this.println(c.grey('Передайте ему позывной и пароль.'));
+    await this.refreshUser();
+  }
+
+  async cmdPromote(args) {
+    const name = args[0];
+    if (!name) {
+      this.println(c.grey('Использование: promote <позывной> [уровень]  — без уровня повышает на 1'));
+      return;
+    }
+
+    let level = null;
+    if (args[1] !== undefined) {
+      level = this.parseLevel(args[1]);
+      if (level == null) {
+        this.failure('bad-level');
+        return;
+      }
+    }
+
+    await this.chain;
+    const result = await this.backend.promote(this.user, name, level);
+    if (result.error) {
+      this.failure(result.error);
+    } else {
+      this.println(c.green(`Сотрудник ${result.target.name} повышен: `) +
+        c.bright(`${this.levelName(result.target.level)} (L${result.target.level})`) + c.green('.'));
+    }
+
+    await this.refreshUser();
+  }
+
+  /** "ОСН — отряд специального назначения" → "ОСН" */
+  shortDepartment(name) {
+    return String(name ?? '').split(' — ')[0];
+  }
+
+  async cmdStaff() {
+    await this.chain;
+    const result = await this.backend.staff();
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+
+    const list = result.staff;
+    this.println(c.bold(c.red(`Персонал АнКо — ${list.length}`)));
+    this.println(c.grey(`  ${'№'.padStart(2)}  ${'Позывной'.padEnd(18)} ${'Отдел'.padEnd(20)} Уровень`));
+
+    list.forEach((person, i) => {
+      const me = this.user && person.name.toLowerCase() === this.user.name.toLowerCase();
+      const name = (me ? `${person.name} *` : person.name).padEnd(18);
+      const department = this.shortDepartment(person.department).slice(0, 20).padEnd(20);
+      const level = `${this.levelName(person.level)} (L${person.level})`;
+      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(name) : c.bright(name)} ${department} ${c.amber(level)}`);
+    });
+    this.println(c.grey('* — это вы.'));
+  }
+
+  async cmdDemote(args) {
+    const name = args[0];
+    if (!name) {
+      this.println(c.grey('Использование: demote <позывной> [уровень]  — без уровня понижает на 1'));
+      return;
+    }
+
+    let level = null;
+    if (args[1] !== undefined) {
+      level = this.parseLevel(args[1]);
+      if (level == null) {
+        this.failure('bad-level');
+        return;
+      }
+    }
+
+    await this.chain;
+    const result = await this.backend.demote(this.user, name, level);
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.green(`Сотрудник ${result.target.name} понижен: `) +
+      c.bright(`${this.levelName(result.target.level)} (L${result.target.level})`) + c.green('.'));
+    await this.refreshUser();
+  }
+
+  async cmdTransfer(args) {
+    const name = args[0];
+    if (!name) {
+      this.println(c.grey('Использование: transfer <позывной>'));
+      return;
+    }
+
+    const departments = this.data.departments ?? [];
+    this.println(c.amber('Новый отдел:'));
+    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
+    const pick = await this.ask(c.amber('Номер отдела: '));
+    if (pick == null) return;
+    const department = departments[Number(pick.trim()) - 1];
+    if (!department) {
+      this.failure('bad-department');
+      return;
+    }
+
+    await this.chain;
+    const result = await this.backend.transfer(this.user, name, department);
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.green(`Сотрудник ${result.target.name} переведён: ${result.target.department}.`));
+    await this.refreshUser();
+  }
+
+  async cmdResetPass(args) {
+    const name = args[0];
+    if (!name) {
+      this.println(c.grey('Использование: resetpass <позывной>'));
+      return;
+    }
+
+    const password = await this.ask(c.amber(`Новый пароль для ${name} (от 4 символов): `), { secret: true });
+    if (password == null) return;
+    if (password.length < 4) {
+      this.failure('bad-password');
+      return;
+    }
+
+    await this.chain;
+    const result = await this.backend.resetPassword(this.user, name, password);
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.green(`Пароль сотрудника ${result.target.name} изменён. Все его сеансы завершены.`));
+    await this.refreshUser();
+  }
+
+  async cmdFire(args) {
+    const name = args[0];
+    if (!name) {
+      this.println(c.grey('Использование: fire <позывной>'));
+      return;
+    }
+
+    const answer = await this.ask(c.red(`Уволить ${name}? Аккаунт будет удалён. Введите ДА для подтверждения: `));
+    if (answer == null || !['да', 'yes', 'y'].includes(answer.trim().toLowerCase())) {
+      this.println(c.grey('Отменено.'));
+      return;
+    }
+
+    await this.chain;
+    const result = await this.backend.fire(this.user, name);
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.bold(c.red(`СОТРУДНИК ${result.target.name} УВОЛЕН. ДОСТУП АННУЛИРОВАН.`)));
+    await this.refreshUser();
   }
 
   async cmdLog() {

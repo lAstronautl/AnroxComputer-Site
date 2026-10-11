@@ -114,6 +114,11 @@ export async function verifyUser(name, password) {
   return (await hashPassword(password, user.salt)) === user.hash ? user : null;
 }
 
+export async function setPassword(name, password) {
+  const salt = randomSalt();
+  return updateUser(name, { salt, hash: await hashPassword(password, salt) });
+}
+
 export function logAttempt(name, entry) {
   const user = getUser(name);
   if (!user) return;

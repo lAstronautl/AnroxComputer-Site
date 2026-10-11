@@ -199,10 +199,10 @@ function likeness(a, b) {
   return n;
 }
 
-function maskedFragment(codes) {
-  if (!codes.length) return null;
-  const { code } = codes[Math.floor(Math.random() * codes.length)];
-  return [...code].map((ch, i) => (/[A-Za-zА-Яа-яЁё]/.test(ch) && i % 2 === 1 ? '█' : ch)).join('');
+function maskedFragment(words) {
+  if (!words.length) return null;
+  const word = words[Math.floor(Math.random() * words.length)];
+  return [...word].map((ch, i) => (/[A-Za-zА-Яа-яЁё]/.test(ch) && i % 2 === 1 ? '█' : ch)).join('');
 }
 
 export async function playHack(shell) {
@@ -256,11 +256,11 @@ export async function playHack(shell) {
       shell.saveStats({ hacks: (stats.hacks ?? 0) + 1 });
       shell.println(c.green('ПАРОЛЬ ПРИНЯТ. ДОСТУП К ДАМПУ ОТКРЫТ.'));
 
-      const locked = (shell.data.codes ?? []).filter((entry) => entry.level > (shell.user?.level ?? 0));
-      const fragment = Math.random() < 0.6 ? maskedFragment(locked) : null;
+      const closed = shell.closedKeywords();
+      const fragment = Math.random() < 0.6 ? maskedFragment(closed) : null;
       shell.println(
         fragment
-          ? `${c.amber('Перехвачен фрагмент кода допуска:')} ${c.bright(fragment)}`
+          ? `${c.amber('Перехвачен фрагмент ключевого слова:')} ${c.bright(fragment)}`
           : c.grey('В дампе нет ничего полезного. Но вы справились.')
       );
       return;

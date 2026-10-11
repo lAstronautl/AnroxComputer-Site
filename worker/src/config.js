@@ -1,6 +1,6 @@
 /**
- * Отделы и коды допуска. ВАЖНО: держите в соответствии с `_data/console.yml`
- * (разделы `departments` и `codes`) — сервер не доверяет уровням, которые присылает браузер.
+ * Отделы и порог админ-команд. ВАЖНО: держите в соответствии с `_data/console.yml`
+ * (разделы `departments` и `admin_level`) — сервер не доверяет уровням, которые присылает браузер.
  */
 
 export const DEPARTMENTS = {
@@ -11,10 +11,8 @@ export const DEPARTMENTS = {
   dkb: { name: 'ДКБ — департамент корпоративной безопасности', level: 2 }
 };
 
-export const CODES = [
-  { code: 'ВЕКТОР-7', level: 3 },
-  { code: 'РУБИН-12', level: 4 },
-  { code: 'ЧЁРНАЯ-ЖЕОДА', level: 5 }
-];
+// с этого уровня доступны adduser и promote; выдать можно не выше собственного уровня
+export const ADMIN_LEVEL = 10;
+export const MAX_LEVEL = 100;
 
-export const ACTIONS = new Set(['read', 'denied', 'bad-code', 'auth', 'hack-failed', 'article']);
+export const ACTIONS = new Set(['read', 'denied', 'bad-code', 'hack-failed', 'article']);

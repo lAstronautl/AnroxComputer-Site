@@ -9,13 +9,11 @@ const DEPARTMENTS = {
   dkb: { name: 'ДКБ — департамент корпоративной безопасности', level: 2 }
 };
 
-const CODES = [
-  { code: 'ВЕКТОР-7', level: 3 },
-  { code: 'РУБИН-12', level: 4 },
-  { code: 'ЧЁРНАЯ-ЖЕОДА', level: 5 }
-];
+// с этого уровня доступны adduser и promote; выдать можно не выше собственного уровня
+const ADMIN_LEVEL = 10;
+const MAX_LEVEL = 100;
 
-const ACTIONS = new Set(['read', 'denied', 'bad-code', 'auth', 'hack-failed', 'article']);
+const ACTIONS = new Set(['read', 'denied', 'bad-code', 'hack-failed', 'article']);
 
 /**
  * API ролевой консоли АнКо (Cloudflare Worker + база D1).
@@ -149,6 +147,29 @@ async function authenticate(request, env) {
   return { row, tokenHash: await sha256(token) };
 }
 
+/* ---------- admin helpers ---------- */
+
+function requireAdmin(row) {
+  if (row.level < ADMIN_LEVEL) throw new ApiError(403, 'forbidden');
+}
+
+/** Whole number 0..MAX_LEVEL, or the fallback when none was given; null when it is not valid. */
+function parseLevel(value, fallback) {
+  if (value === undefined || value === null || value === '') return Number.isInteger(fallback) ? fallback : null;
+  const level = Number(value);
+  return Number.isInteger(level) && level >= 0 && level <= MAX_LEVEL ? level : null;
+}
+
+/** The employee an admin wants to manage: must exist, not be the admin, and rank below them. */
+async function manageable(env, actor, name) {
+  const key = userKey(String(name ?? ''));
+  const target = key ? await env.DB.prepare('SELECT * FROM users WHERE key = ?').bind(key).first() : null;
+  if (!target) throw new ApiError(404, 'not-found');
+  if (target.key === actor.key) throw new ApiError(403, 'self');
+  if (target.level >= actor.level) throw new ApiError(403, 'above');
+  return target;
+}
+
 /* ---------- routes ---------- */
 
 async function register(request, env) {
@@ -255,22 +276,121 @@ async function route(request, env) {
     return { user: await publicUser(env, fresh) };
   }
 
-  if (path === '/api/auth' && method === 'POST') {
+  if (path === '/api/adduser' && method === 'POST') {
+    requireAdmin(row);
     const body = await readBody(request);
-    const typed = String(body.code ?? '').trim().toUpperCase();
-    const entry = CODES.find((item) => item.code.toUpperCase() === typed);
+    const name = String(body.name ?? '').trim();
+    const password = String(body.password ?? '');
+    const department = DEPARTMENTS[String(body.department ?? '')];
+    const level = parseLevel(body.level, department?.level);
 
-    if (!entry) {
-      await addAttempt(env, row.key, 'bad-code', typed.slice(0, 120));
-      throw new ApiError(400, 'invalid');
-    }
-    if (entry.level <= row.level) throw new ApiError(409, 'already');
+    if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
+    if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
+    if (!department) throw new ApiError(400, 'bad-department');
+    if (level === null) throw new ApiError(400, 'bad-level');
+    if (level > row.level) throw new ApiError(403, 'too-high');
 
-    const codes = [...new Set([...JSON.parse(row.codes), entry.code])];
-    await env.DB.prepare('UPDATE users SET level = ?, codes = ? WHERE key = ?').bind(entry.level, JSON.stringify(codes), row.key).run();
-    await addAttempt(env, row.key, 'auth', `L${entry.level}`);
+    const key = userKey(name);
+    if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');
+
+    const salt = randomHex(16);
+    await env.DB.prepare(
+      'INSERT INTO users (key, name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+      .bind(key, name, department.name, salt, await hashPassword(password, salt), department.level, level, Date.now())
+      .run();
+    await addAttempt(env, row.key, 'adduser', `${name} L${level}`);
+    return { created: { name, department: department.name, level } };
+  }
+
+  if (path === '/api/unlock' && method === 'POST') {
+    // the browser checks the word against the files; here it is only remembered for this employee
+    const body = await readBody(request);
+    const keyword = String(body.keyword ?? '').trim().toUpperCase();
+    if (keyword.length < 1 || keyword.length > 40) throw new ApiError(400, 'bad-keyword');
+
+    const known = JSON.parse(row.codes);
+    if (known.includes(keyword)) throw new ApiError(409, 'already');
+    if (known.length >= 50) throw new ApiError(400, 'bad-keyword');
+
+    await env.DB.prepare('UPDATE users SET codes = ? WHERE key = ?').bind(JSON.stringify([...known, keyword]), row.key).run();
+    await addAttempt(env, row.key, 'auth', keyword);
     const fresh = await env.DB.prepare('SELECT * FROM users WHERE key = ?').bind(row.key).first();
     return { user: await publicUser(env, fresh) };
+  }
+
+  if (path === '/api/staff' && method === 'GET') {
+    const { results } = await env.DB.prepare('SELECT name, department, level FROM users ORDER BY level DESC, name COLLATE NOCASE ASC').all();
+    return { staff: results };
+  }
+
+  if (path === '/api/promote' && method === 'POST') {
+    requireAdmin(row);
+    const body = await readBody(request);
+    const target = await manageable(env, row, body.name);
+
+    const level = parseLevel(body.level, target.level + 1);
+    if (level === null) throw new ApiError(400, 'bad-level');
+    if (level > row.level) throw new ApiError(403, 'too-high');
+    if (level <= target.level) throw new ApiError(409, 'not-higher');
+
+    await env.DB.prepare('UPDATE users SET level = ? WHERE key = ?').bind(level, target.key).run();
+    await addAttempt(env, row.key, 'promote', `${target.name} L${target.level}→L${level}`);
+    return { target: { name: target.name, level } };
+  }
+
+  if (path === '/api/demote' && method === 'POST') {
+    requireAdmin(row);
+    const body = await readBody(request);
+    const target = await manageable(env, row, body.name);
+
+    const level = parseLevel(body.level, target.level - 1);
+    if (level === null || level < 0) throw new ApiError(400, 'bad-level');
+    if (level >= target.level) throw new ApiError(409, 'not-lower');
+
+    await env.DB.prepare('UPDATE users SET level = ? WHERE key = ?').bind(level, target.key).run();
+    await addAttempt(env, row.key, 'demote', `${target.name} L${target.level}→L${level}`);
+    return { target: { name: target.name, level } };
+  }
+
+  if (path === '/api/transfer' && method === 'POST') {
+    requireAdmin(row);
+    const body = await readBody(request);
+    const target = await manageable(env, row, body.name);
+    const department = DEPARTMENTS[String(body.department ?? '')];
+    if (!department) throw new ApiError(400, 'bad-department');
+
+    await env.DB.prepare('UPDATE users SET department = ? WHERE key = ?').bind(department.name, target.key).run();
+    await addAttempt(env, row.key, 'transfer', `${target.name} → ${department.name}`.slice(0, 120));
+    return { target: { name: target.name, department: department.name } };
+  }
+
+  if (path === '/api/resetpass' && method === 'POST') {
+    requireAdmin(row);
+    const body = await readBody(request);
+    const target = await manageable(env, row, body.name);
+    const password = String(body.password ?? '');
+    if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
+
+    const salt = randomHex(16);
+    await env.DB.prepare('UPDATE users SET salt = ?, hash = ?, fails = 0, locked_until = 0 WHERE key = ?')
+      .bind(salt, await hashPassword(password, salt), target.key)
+      .run();
+    await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(target.key).run(); // sign them out everywhere
+    await addAttempt(env, row.key, 'resetpass', target.name);
+    return { target: { name: target.name } };
+  }
+
+  if (path === '/api/fire' && method === 'POST') {
+    requireAdmin(row);
+    const body = await readBody(request);
+    const target = await manageable(env, row, body.name);
+
+    await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(target.key).run();
+    await env.DB.prepare('DELETE FROM attempts WHERE user_key = ?').bind(target.key).run();
+    await env.DB.prepare('DELETE FROM users WHERE key = ?').bind(target.key).run();
+    await addAttempt(env, row.key, 'fire', `${target.name} L${target.level}`);
+    return { target: { name: target.name } };
   }
 
   throw new ApiError(404, 'not-found');
