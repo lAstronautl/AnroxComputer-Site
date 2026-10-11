@@ -261,6 +261,7 @@ export class RemoteBackend {
     try {
       const response = await fetch(`${this.base}${path}`, {
         method,
+        cache: 'no-store',
         headers: {
           ...(body ? { 'Content-Type': 'application/json' } : {}),
           ...(this.token ? { Authorization: `Bearer ${this.token}` } : {})
