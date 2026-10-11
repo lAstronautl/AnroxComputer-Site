@@ -66,6 +66,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Authenticated or explicitly uncached requests (the console API) depend on who asks,
+  // so they must always reach the network: a cached reply would show another user's data.
+  if (event.request.headers.has('authorization') || event.request.cache === 'no-store') {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
       if (response) {

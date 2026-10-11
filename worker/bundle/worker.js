@@ -9,7 +9,7 @@ const DEPARTMENTS = {
   dkb: { name: 'ДКБ — департамент корпоративной безопасности', level: 2 }
 };
 
-// с этого уровня доступны adduser и promote; выдать можно не выше собственного уровня
+// с этого уровня доступны promote, demote, transfer, resetpass, fire, broadcast (adduser — всем вошедшим, но не выше своего уровня)
 const ADMIN_LEVEL = 10;
 const MAX_LEVEL = 100;
 
@@ -34,6 +34,7 @@ const MAIL_SUBJECT = 60;
 const MAIL_TEXT = 1000;
 const MAIL_INBOX = 100; // older letters are dropped beyond this
 const MAIL_PER_HOUR = 20;
+const ADDUSER_PER_DAY = 2;
 
 class ApiError extends Error {
   constructor(status, code) {
@@ -117,6 +118,7 @@ async function publicUser(env, row) {
 
   return {
     name: row.name,
+    realName: row.real_name,
     department: row.department,
     baseLevel: row.base_level,
     level: row.level,
@@ -154,6 +156,23 @@ async function authenticate(request, env) {
 }
 
 /* ---------- admin helpers ---------- */
+
+/** Real (out-of-game) name: 2–60 letters, digits, spaces and . , ' -. Null when invalid. */
+function cleanRealName(value) {
+  const name = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return name.length >= 2 && name.length <= 60 && /^[\p{L}\p{N} .,'-]+$/u.test(name) ? name : null;
+}
+
+/** A known department id, or a free-text name (lowest working level). Null when neither is valid. */
+function resolveDepartment(body) {
+  const known = DEPARTMENTS[String(body.department ?? '')];
+  if (known) return known;
+
+  const name = String(body.customDepartment ?? '').replace(/\s+/g, ' ').trim();
+  // eslint-disable-next-line no-control-regex
+  if (name.length < 2 || name.length > 60 || /[\x00-\x1f\x7f]/.test(name)) return null;
+  return { name, level: 1 };
+}
 
 function requireAdmin(row) {
   if (row.level < ADMIN_LEVEL) throw new ApiError(403, 'forbidden');
@@ -195,24 +214,28 @@ async function manageable(env, actor, name) {
 
 /* ---------- routes ---------- */
 
+/** Open registration is closed: only the very first account can be created this way (it becomes an administrator). */
 async function register(request, env) {
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
+  if (count.n > 0) throw new ApiError(403, 'closed');
+
   const body = await readBody(request);
   const name = String(body.name ?? '').trim();
   const password = String(body.password ?? '');
-  const department = DEPARTMENTS[String(body.department ?? '')];
+  const department = resolveDepartment(body);
+  const realName = body.realName ? cleanRealName(body.realName) : '';
 
   if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
   if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
   if (!department) throw new ApiError(400, 'bad-department');
+  if (realName === null) throw new ApiError(400, 'bad-realname');
 
   const key = userKey(name);
-  if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');
-
   const salt = randomHex(16);
   await env.DB.prepare(
-    'INSERT INTO users (key, name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (key, name, real_name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
-    .bind(key, name, department.name, salt, await hashPassword(password, salt), department.level, department.level, Date.now())
+    .bind(key, name, realName, department.name, salt, await hashPassword(password, salt), ADMIN_LEVEL, ADMIN_LEVEL, Date.now())
     .run();
 
   const row = await env.DB.prepare('SELECT * FROM users WHERE key = ?').bind(key).first();
@@ -301,27 +324,34 @@ async function route(request, env) {
   }
 
   if (path === '/api/adduser' && method === 'POST') {
-    requireAdmin(row);
+    // any signed-in employee may add someone, but never above their own level
     const body = await readBody(request);
     const name = String(body.name ?? '').trim();
     const password = String(body.password ?? '');
-    const department = DEPARTMENTS[String(body.department ?? '')];
-    const level = parseLevel(body.level, department?.level);
+    const department = resolveDepartment(body);
+    const realName = cleanRealName(body.realName);
+    const level = parseLevel(body.level, department ? Math.min(department.level, row.level) : undefined);
 
     if (!NAME_RULE.test(name)) throw new ApiError(400, 'bad-name');
+    if (!realName) throw new ApiError(400, 'bad-realname');
     if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
     if (!department) throw new ApiError(400, 'bad-department');
     if (level === null) throw new ApiError(400, 'bad-level');
     if (level > row.level) throw new ApiError(403, 'too-high');
+
+    const added = await env.DB.prepare('SELECT COUNT(*) AS n FROM attempts WHERE user_key = ? AND action = ? AND t > ?')
+      .bind(row.key, 'adduser', Date.now() - 24 * 3600000)
+      .first();
+    if (added.n >= ADDUSER_PER_DAY) throw new ApiError(429, 'rate');
 
     const key = userKey(name);
     if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');
 
     const salt = randomHex(16);
     await env.DB.prepare(
-      'INSERT INTO users (key, name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO users (key, name, real_name, department, salt, hash, base_level, level, registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-      .bind(key, name, department.name, salt, await hashPassword(password, salt), department.level, level, Date.now())
+      .bind(key, name, realName, department.name, salt, await hashPassword(password, salt), department.level, level, Date.now())
       .run();
     await addAttempt(env, row.key, 'adduser', `${name} L${level}`);
     return { created: { name, department: department.name, level } };
@@ -392,8 +422,28 @@ async function route(request, env) {
   }
 
   if (path === '/api/staff' && method === 'GET') {
-    const { results } = await env.DB.prepare('SELECT name, department, level FROM users ORDER BY level DESC, name COLLATE NOCASE ASC').all();
-    return { staff: results };
+    // real names are only sent to administrators; everyone else gets none (the console shows scrambled symbols)
+    const { results } = await env.DB.prepare('SELECT name, real_name, department, level FROM users ORDER BY level DESC, name COLLATE NOCASE ASC').all();
+    const seeReal = row.level >= ADMIN_LEVEL;
+    return { staff: results.map(({ name, real_name: realName, department, level }) => ({ name, department, level, ...(seeReal ? { realName } : {}) })) };
+  }
+
+  if (path === '/api/setname' && method === 'POST') {
+    // your own real name, or (administrators) the real name of someone below you
+    const body = await readBody(request);
+    const realName = cleanRealName(body.realName);
+    if (!realName) throw new ApiError(400, 'bad-realname');
+
+    const own = !body.name || userKey(String(body.name)) === row.key;
+    let target = row;
+    if (!own) {
+      requireAdmin(row);
+      target = await manageable(env, row, body.name);
+    }
+
+    await env.DB.prepare('UPDATE users SET real_name = ? WHERE key = ?').bind(realName, target.key).run();
+    await addAttempt(env, row.key, 'setname', target.name);
+    return { target: { name: target.name } };
   }
 
   if (path === '/api/promote' && method === 'POST') {
@@ -429,7 +479,7 @@ async function route(request, env) {
     requireAdmin(row);
     const body = await readBody(request);
     const target = await manageable(env, row, body.name);
-    const department = DEPARTMENTS[String(body.department ?? '')];
+    const department = resolveDepartment(body);
     if (!department) throw new ApiError(400, 'bad-department');
 
     await env.DB.prepare('UPDATE users SET department = ? WHERE key = ?').bind(department.name, target.key).run();

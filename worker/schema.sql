@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS users (
   key          TEXT PRIMARY KEY,            -- позывной в нижнем регистре
   name         TEXT NOT NULL,
+  real_name    TEXT NOT NULL DEFAULT '',   -- настоящее имя человека; видят только администраторы
   department   TEXT NOT NULL,
   salt         TEXT NOT NULL,
   hash         TEXT NOT NULL,               -- PBKDF2-SHA256

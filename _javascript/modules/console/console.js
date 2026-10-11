@@ -15,6 +15,19 @@ import { ConsoleSound } from './sound';
 // eslint-disable-next-line no-control-regex
 const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|\x1b|[\s\S]/gu;
 const NAME_RULE = /^[\p{L}\p{N}_-]{2,24}$/u;
+const REAL_NAME_RULE = /^[\p{L}\p{N} .,'-]{2,60}$/u;
+
+// the "staff" list hides real names behind shimmering symbols
+const GLYPHS = '#$@%&!*?§¤^+=~<>/|';
+const NAME_COLUMN = { start: 24, width: 14 }; // 1-based terminal column and width of the name field in the staff table
+const SHIMMER_MS = 140;
+const SHIMMER_TOTAL = 3500;
+
+function scramble(length) {
+  let text = '';
+  for (let i = 0; i < length; i += 1) text += GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+  return text;
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -57,6 +70,8 @@ class Shell {
     this.sound = null;
     this.articlesUrl = '';
     this.articles = null;
+    this.shimmerTimer = 0;
+    this.pendingShimmer = null;
     this.mailBox = null; // letters from the last `mail` listing, so numbers stay stable
     this.queue = [];
     this.pumpTimer = 0;
@@ -72,12 +87,14 @@ class Shell {
 
   /** Raw terminal output. Keeps its place behind any text that is still being typed. */
   raw(text) {
+    this.stopShimmer();
     if (this.typing) this.queue.push({ text, typed: false });
     else this.term.write(text);
   }
 
   /** Text that appears character by character. */
   type(text) {
+    this.stopShimmer();
     const units = text.match(UNITS) ?? [];
     this.queue.push({ units, at: 0, typed: true });
     this.startPump();
@@ -183,6 +200,41 @@ class Shell {
     this.cursor = 0;
     this.historyIndex = -1;
     this.redraw();
+
+    if (this.pendingShimmer) {
+      const request = this.pendingShimmer;
+      this.pendingShimmer = null;
+      void this.flush().then(() => this.startShimmer(request));
+    }
+  }
+
+  /** Re-draws the hidden-name cells of the staff table with fresh random symbols for a few seconds. */
+  startShimmer({ count }) {
+    this.stopShimmer();
+    if (this.busy || this.askState) return;
+
+    const started = performance.now();
+    this.shimmerTimer = setInterval(() => {
+      if (performance.now() - started > SHIMMER_TOTAL) {
+        this.stopShimmer();
+        return;
+      }
+
+      let out = '';
+      for (let i = 0; i < count; i += 1) {
+        const up = count - i + 1; // rows between this table row and the prompt line
+        out += `${ESC}[${up}A${ESC}[${NAME_COLUMN.start}G${c.grey(scramble(NAME_COLUMN.width))}${ESC}[${up}B`;
+      }
+      const column = visibleLength(this.promptText) + this.cursor + 1;
+      this.term.write(`${out}${ESC}[${column}G`);
+    }, SHIMMER_MS);
+  }
+
+  stopShimmer() {
+    this.pendingShimmer = null;
+    if (!this.shimmerTimer) return;
+    clearInterval(this.shimmerTimer);
+    this.shimmerTimer = 0;
   }
 
   redraw() {
@@ -206,6 +258,7 @@ class Shell {
   }
 
   handleData(data) {
+    this.stopShimmer();
     if (this.typing) this.skipTyping(); // a key press skips the effect and still counts as input
 
     for (const token of data.match(TOKENS) ?? []) {
@@ -436,12 +489,14 @@ class Shell {
       forbidden: 'ДОСТУП ЗАПРЕЩЁН. Недостаточный уровень допуска.',
       'too-high': 'Нельзя выдать уровень выше собственного.',
       'bad-level': 'Уровень — целое число от 0.',
-      'bad-department': 'Нет такого отдела.',
+      'bad-department': 'Нет такого отдела. Название: от 2 до 60 символов.',
       'not-found': 'Сотрудник не найден.',
       'not-higher': 'Это не повышение: у сотрудника уже такой или более высокий уровень.',
       self: 'Над собой эта команда не действует.',
       above: 'Нельзя управлять сотрудником равного или более высокого уровня.',
       'bad-keyword': 'Некорректное ключевое слово.',
+      'bad-realname': 'Имя: 2–60 символов — буквы, цифры, пробел, точка, запятая, дефис.',
+      closed: 'Регистрация закрыта. Аккаунт создаёт вышестоящий сотрудник командой adduser.',
       'bad-subject': 'Нужна тема письма (до 60 символов).',
       'bad-text': 'Текст письма: от 1 до 1000 символов.',
       'not-lower': 'Это не понижение: у сотрудника уже такой или более низкий уровень.'
@@ -451,7 +506,7 @@ class Shell {
 
   requireLogin() {
     if (this.user) return true;
-    this.println(c.red('Требуется вход в систему.') + ` Команды: ${c.amber('login')} или ${c.amber('register')}.`);
+    this.println(c.red('Требуется вход в систему.') + ` Команда: ${c.amber('login')}.`);
     return false;
   }
 
@@ -520,10 +575,6 @@ class Shell {
       clear: {
         desc: 'очистить экран',
         run: () => this.clear()
-      },
-      register: {
-        desc: 'зарегистрировать сотрудника',
-        run: () => this.cmdRegister()
       },
       login: {
         desc: 'войти в систему',
@@ -603,13 +654,17 @@ class Shell {
       adduser: {
         desc: 'добавить сотрудника (adduser [позывной])',
         auth: true,
-        admin: true,
         run: (args) => this.cmdAddUser(args)
       },
       staff: {
         desc: 'весь персонал: отдел и уровень',
         auth: true,
         run: () => this.cmdStaff()
+      },
+      setname: {
+        desc: 'указать имя человека (setname [позывной])',
+        auth: true,
+        run: (args) => this.cmdSetName(args)
       },
       demote: {
         desc: 'понизить сотрудника (demote <позывной> [уровень])',
@@ -695,6 +750,7 @@ class Shell {
     commands.ключ = commands.auth;
     commands.промоушен = commands.promote;
     commands.персонал = commands.staff;
+    commands.имя = commands.setname;
     commands.понизить = commands.demote;
     commands.перевод = commands.transfer;
     commands.уволить = commands.fire;
@@ -723,49 +779,6 @@ class Shell {
     if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
     this.println('Anrox-OS c доступом в корпоротивную сеть которая развернута искуственным интелектом для работы в этом секторе');
     this.println('Внимание! Несанкционированный доступ в эту сеть может каратся казнью.');
-  }
-
-  async cmdRegister() {
-    this.println(c.bold(c.red('=== РЕГИСТРАЦИЯ СОТРУДНИКА ===')) + c.grey('  (Ctrl+C — отмена)'));
-
-    const name = (await this.ask(c.amber('Позывной (2–24 символа): ')))?.trim();
-    if (name == null) return;
-    if (!NAME_RULE.test(name)) {
-      this.println(c.red('Позывной: 2–24 символа, только буквы, цифры, «_» и «-».'));
-      return;
-    }
-    const departments = this.data.departments ?? [];
-    this.println(c.amber('Отдел:'));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    const pick = await this.ask(c.amber('Номер отдела: '));
-    if (pick == null) return;
-    const department = departments[Number(pick.trim()) - 1];
-    if (!department) {
-      this.println(c.red('Нет такого отдела.'));
-      return;
-    }
-
-    const password = await this.ask(c.amber('Пароль (от 4 символов): '), { secret: true });
-    if (password == null) return;
-    if (password.length < 4) {
-      this.println(c.red('Пароль слишком короткий.'));
-      return;
-    }
-    const again = await this.ask(c.amber('Повторите пароль: '), { secret: true });
-    if (again == null) return;
-    if (again !== password) {
-      this.println(c.red('Пароли не совпадают.'));
-      return;
-    }
-
-    const result = await this.backend.register({ name, department, password });
-    if (result.error) {
-      this.failure(result.error);
-      return;
-    }
-
-    this.println(c.green('Сотрудник внесён в реестр.'));
-    this.signIn(result.user);
   }
 
   async cmdLogin() {
@@ -799,6 +812,7 @@ class Shell {
     const user = this.user;
     const stats = user.stats ?? {};
     this.println(`${c.bold(c.red(user.name))}`);
+    this.println(`  Имя:     ${user.realName || c.grey('не указано (setname)')}`);
     this.println(`  Отдел:   ${user.department}`);
     this.println(`  Допуск:  ${c.bright(this.levelName(user.level))} (L${user.level})`);
     this.println(`  Регистрация: ${new Date(user.registered).toLocaleString('ru-RU')}`);
@@ -913,6 +927,36 @@ class Shell {
       this.println(`  ${this.tag(file)} ${c.bright(file.path)}  ${c.grey(file.title ?? '')}`);
       if (snippet) this.println(`      ${c.grey(snippet)}`);
     }
+  }
+
+  /**
+   * Department chosen from the list by number, or written in by hand.
+   * Returns null when cancelled or invalid (the reason is already printed).
+   */
+  async askDepartment(title) {
+    const departments = this.data.departments ?? [];
+    this.println(c.amber(`${title}:`));
+    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
+    this.println(c.grey('Выберите номер или впишите своё название отдела.'));
+
+    const answer = await this.ask(c.amber('Отдел: '));
+    if (answer == null) return null;
+
+    const text = answer.replace(/\s+/g, ' ').trim();
+    if (/^\d+$/.test(text)) {
+      const listed = departments[Number(text) - 1];
+      if (!listed) this.failure('bad-department');
+      return listed ?? null;
+    }
+
+    if (text.length < 2 || text.length > 60) {
+      this.println(c.red('Название отдела: от 2 до 60 символов.'));
+      return null;
+    }
+
+    // a custom name has no preset level: the employee starts at the lowest working level
+    const known = departments.find((d) => d.name.toLowerCase() === text.toLowerCase());
+    return known ?? { custom: true, name: text, level: 1 };
   }
 
   /** Several lines of text; an empty line sends. Returns null when cancelled. */
@@ -1103,21 +1147,22 @@ class Shell {
       return;
     }
 
-    const departments = this.data.departments ?? [];
-    this.println(c.amber('Отдел:'));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    const pick = await this.ask(c.amber('Номер отдела: '));
-    if (pick == null) return;
-    const department = departments[Number(pick.trim()) - 1];
-    if (!department) {
-      this.failure('bad-department');
+    const realText = await this.ask(c.amber('Имя человека: '));
+    if (realText == null) return;
+    const realName = realText.replace(/\s+/g, ' ').trim();
+    if (!REAL_NAME_RULE.test(realName)) {
+      this.failure('bad-realname');
       return;
     }
 
+    const department = await this.askDepartment('Отдел');
+    if (!department) return;
+
     const maxLevel = this.user.level;
-    const levelText = await this.ask(c.amber(`Уровень допуска (0–${maxLevel}, Enter — ${department.level}): `));
+    const defaultLevel = Math.min(department.level, maxLevel);
+    const levelText = await this.ask(c.amber(`Уровень допуска (0–${maxLevel}, Enter — ${defaultLevel}): `));
     if (levelText == null) return;
-    const level = levelText.trim() ? this.parseLevel(levelText) : department.level;
+    const level = levelText.trim() ? this.parseLevel(levelText) : defaultLevel;
     if (level == null) {
       this.failure('bad-level');
       return;
@@ -1134,7 +1179,7 @@ class Shell {
       return;
     }
 
-    const result = await this.backend.addUser(this.user, { name, department, level, password });
+    const result = await this.backend.addUser(this.user, { name, realName, department, level, password });
     if (result.error) {
       this.failure(result.error);
       return;
@@ -1181,24 +1226,53 @@ class Shell {
 
   async cmdStaff() {
     await this.chain;
-    const result = await this.backend.staff();
+    const result = await this.backend.staff(this.user);
     if (result.error) {
       this.failure(result.error);
       return;
     }
 
     const list = result.staff;
+    const seeReal = this.isAdmin();
+    const cell = (text, width) => String(text).slice(0, width).padEnd(width);
+
     this.println(c.bold(c.red(`Персонал АнКо — ${list.length}`)));
-    this.println(c.grey(`  ${'№'.padStart(2)}  ${'Позывной'.padEnd(18)} ${'Отдел'.padEnd(20)} Уровень`));
+    this.println(c.grey(`  ${'№'.padStart(2)}  ${cell('Позывной', 16)} ${cell('Имя', NAME_COLUMN.width)} ${cell('Отдел', 14)} Уровень`));
 
     list.forEach((person, i) => {
       const me = this.user && person.name.toLowerCase() === this.user.name.toLowerCase();
-      const name = (me ? `${person.name} *` : person.name).padEnd(18);
-      const department = this.shortDepartment(person.department).slice(0, 20).padEnd(20);
+      const callsign = cell(me ? `${person.name} *` : person.name, 16);
+      // real names are for level 10+; everyone else sees noise
+      const real = seeReal ? c.bright(cell(person.realName || '—', NAME_COLUMN.width)) : c.grey(scramble(NAME_COLUMN.width));
+      const department = cell(this.shortDepartment(person.department), 14);
       const level = `${this.levelName(person.level)} (L${person.level})`;
-      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(name) : c.bright(name)} ${department} ${c.amber(level)}`);
+      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(callsign) : c.bright(callsign)} ${real} ${department} ${c.amber(level)}`);
     });
     this.println(c.grey('* — это вы.'));
+
+    const fits = list.length + 4 <= (this.term.rows ?? 24);
+    if (!seeReal && fits) this.pendingShimmer = { count: list.length };
+  }
+
+  async cmdSetName(args) {
+    const target = args[0];
+    const text = await this.ask(c.amber(target ? `Имя сотрудника ${target}: ` : 'Ваше имя: '));
+    if (text == null) return;
+
+    const realName = text.replace(/\s+/g, ' ').trim();
+    if (!REAL_NAME_RULE.test(realName)) {
+      this.failure('bad-realname');
+      return;
+    }
+
+    await this.chain;
+    const result = await this.backend.setName(this.user, target, realName);
+    if (result.error) {
+      this.failure(result.error);
+      return;
+    }
+    this.println(c.green(`Имя сохранено: ${result.target.name}.`));
+    await this.refreshUser();
   }
 
   async cmdDemote(args) {
@@ -1235,16 +1309,8 @@ class Shell {
       return;
     }
 
-    const departments = this.data.departments ?? [];
-    this.println(c.amber('Новый отдел:'));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    const pick = await this.ask(c.amber('Номер отдела: '));
-    if (pick == null) return;
-    const department = departments[Number(pick.trim()) - 1];
-    if (!department) {
-      this.failure('bad-department');
-      return;
-    }
+    const department = await this.askDepartment('Новый отдел');
+    if (!department) return;
 
     await this.chain;
     const result = await this.backend.transfer(this.user, name, department);
@@ -1437,7 +1503,7 @@ class Shell {
     this.user = null;
     this.cwd = '/';
     this.println(c.bold(c.red(`СОТРУДНИК ${name} СНЯТ С ДОЛЖНОСТИ. ДОСТУП АННУЛИРОВАН.`)));
-    this.println(c.grey('Аккаунт удалён. Для нового доступа: register.'));
+    this.println(c.grey('Аккаунт удалён. Новый аккаунт создаёт вышестоящий сотрудник.'));
   }
 
   cmdFlashbang() {
@@ -1521,7 +1587,7 @@ class Shell {
       this.mailNotice();
     } else {
       this.println('');
-      this.println(`Для доступа: ${c.amber('register')} — новый сотрудник, ${c.amber('login')} — вход, ${c.amber('help')} — команды.`);
+      this.println(`Для доступа: ${c.amber('login')} — вход, ${c.amber('help')} — команды.`);
     }
     this.println('');
 

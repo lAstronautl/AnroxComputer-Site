@@ -53,14 +53,6 @@ export class LocalBackend {
     this.remote = false;
   }
 
-  async register({ name, department, password }) {
-    if (getUser(name)) return { error: 'taken' };
-    const user = await createUser({ name, department: department.name, password, level: department.level });
-    if (!user) return { error: 'taken' };
-    setSessionName(user.name);
-    return { user };
-  }
-
   async login(name, password) {
     const user = await verifyUser(name, password);
     if (!user) return { error: 'credentials' };
@@ -97,12 +89,10 @@ export class LocalBackend {
     return { user: withUnread(getUser(user.name)) };
   }
 
-  async addUser(actor, { name, department, level, password }) {
-    const admin = this.data.admin_level ?? 10;
-    if (actor.level < admin) return { error: 'forbidden' };
+  async addUser(actor, { name, realName, department, level, password }) {
     if (level > actor.level) return { error: 'too-high' };
 
-    const user = await createUser({ name, department: department.name, password, level });
+    const user = await createUser({ name, realName, department: department.name, password, level });
     if (!user) return { error: 'taken' };
     logAttempt(actor.name, { action: 'adduser', target: `${user.name} L${level}` });
     return { created: { name: user.name, department: user.department, level } };
@@ -118,12 +108,26 @@ export class LocalBackend {
     return { target };
   }
 
-  async staff() {
+  async staff(actor) {
+    const seeReal = actor.level >= (this.data.admin_level ?? 10);
     return {
       staff: Object.values(loadUsers())
-        .map(({ name, department, level }) => ({ name, department, level }))
+        .map(({ name, realName, department, level }) => ({ name, department, level, ...(seeReal ? { realName: realName ?? '' } : {}) }))
         .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, 'ru'))
     };
+  }
+
+  async setName(actor, name, realName) {
+    let target = actor;
+    if (name && name.toLowerCase() !== actor.name.toLowerCase()) {
+      const found = this.manageable(actor, name);
+      if (found.error) return { error: found.error };
+      target = found.target;
+    }
+
+    updateUser(target.name, { realName });
+    logAttempt(actor.name, { action: 'setname', target: target.name });
+    return { target: { name: target.name } };
   }
 
   async promote(actor, name, level) {
@@ -235,6 +239,11 @@ export class LocalBackend {
   }
 }
 
+/** How a department goes over the wire: a known id, or the free-text name. */
+function departmentFields(department) {
+  return department.custom ? { customDepartment: department.name } : { department: department.id };
+}
+
 export class RemoteBackend {
   constructor(baseUrl) {
     this.base = baseUrl.replace(/\/+$/, '');
@@ -261,6 +270,7 @@ export class RemoteBackend {
     try {
       const response = await fetch(`${this.base}${path}`, {
         method,
+        cache: 'no-store',
         headers: {
           ...(body ? { 'Content-Type': 'application/json' } : {}),
           ...(this.token ? { Authorization: `Bearer ${this.token}` } : {})
@@ -279,10 +289,6 @@ export class RemoteBackend {
     if (result.error) return result;
     this.setToken(result.token);
     return { user: result.user };
-  }
-
-  async register({ name, department, password }) {
-    return this.open(await this.call('POST', '/api/register', { name, department: department.id, password }));
   }
 
   async login(name, password) {
@@ -340,12 +346,16 @@ export class RemoteBackend {
     return this.call('POST', '/api/broadcast', { subject, body });
   }
 
-  async addUser(actor, { name, department, level, password }) {
-    return this.call('POST', '/api/adduser', { name, department: department.id, level, password });
+  async addUser(actor, { name, realName, department, level, password }) {
+    return this.call('POST', '/api/adduser', { name, realName, ...departmentFields(department), level, password });
   }
 
   async staff() {
     return this.call('GET', '/api/staff');
+  }
+
+  async setName(actor, name, realName) {
+    return this.call('POST', '/api/setname', { name, realName });
   }
 
   async promote(actor, name, level) {
@@ -357,7 +367,7 @@ export class RemoteBackend {
   }
 
   async transfer(actor, name, department) {
-    return this.call('POST', '/api/transfer', { name, department: department.id });
+    return this.call('POST', '/api/transfer', { name, ...departmentFields(department) });
   }
 
   async resetPassword(actor, name, password) {
