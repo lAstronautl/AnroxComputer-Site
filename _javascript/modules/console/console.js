@@ -489,7 +489,7 @@ class Shell {
       forbidden: 'ДОСТУП ЗАПРЕЩЁН. Недостаточный уровень допуска.',
       'too-high': 'Нельзя выдать уровень выше собственного.',
       'bad-level': 'Уровень — целое число от 0.',
-      'bad-department': 'Нет такого отдела. Название: от 2 до 60 символов.',
+      'bad-department': 'Название отдела: от 2 до 60 символов.',
       'not-found': 'Сотрудник не найден.',
       'not-higher': 'Это не повышение: у сотрудника уже такой или более высокий уровень.',
       self: 'Над собой эта команда не действует.',
@@ -929,34 +929,19 @@ class Shell {
     }
   }
 
-  /**
-   * Department chosen from the list by number, or written in by hand.
-   * Returns null when cancelled or invalid (the reason is already printed).
-   */
+  /** Department written in by hand. Returns null when cancelled or invalid (the reason is already printed). */
   async askDepartment(title) {
-    const departments = this.data.departments ?? [];
-    this.println(c.amber(`${title}:`));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    this.println(c.grey('Выберите номер или впишите своё название отдела.'));
-
-    const answer = await this.ask(c.amber('Отдел: '));
+    const answer = await this.ask(c.amber(`${title} (впишите название): `));
     if (answer == null) return null;
 
-    const text = answer.replace(/\s+/g, ' ').trim();
-    if (/^\d+$/.test(text)) {
-      const listed = departments[Number(text) - 1];
-      if (!listed) this.failure('bad-department');
-      return listed ?? null;
-    }
-
-    if (text.length < 2 || text.length > 60) {
+    const name = answer.replace(/\s+/g, ' ').trim();
+    if (name.length < 2 || name.length > 60) {
       this.println(c.red('Название отдела: от 2 до 60 символов.'));
       return null;
     }
 
-    // a custom name has no preset level: the employee starts at the lowest working level
-    const known = departments.find((d) => d.name.toLowerCase() === text.toLowerCase());
-    return known ?? { custom: true, name: text, level: 1 };
+    // a hand-written department has no preset level: the employee starts at the lowest working level
+    return { name, level: 1 };
   }
 
   /** Several lines of text; an empty line sends. Returns null when cancelled. */

@@ -1,14 +1,6 @@
 // Единый файл для вставки в редактор Worker в панели Cloudflare (собран из src/config.js + src/index.js).
 // Не правьте вручную: меняйте src/ и пересобирайте (python3 worker/build-bundle.py).
 
-const DEPARTMENTS = {
-  staff: { name: 'Рядовой сотрудник', level: 1 },
-  osn: { name: 'ОСН — отряд специального назначения', level: 2 },
-  otkb: { name: 'ОтКБ — отряд корпоративной безопасности', level: 2 },
-  dzis: { name: 'ДЗИС — департамент защиты интеллектуальной собственности', level: 2 },
-  dkb: { name: 'ДКБ — департамент корпоративной безопасности', level: 2 }
-};
-
 // с этого уровня доступны promote, demote, transfer, resetpass, fire, broadcast (adduser — всем вошедшим, но не выше своего уровня)
 const ADMIN_LEVEL = 10;
 const MAX_LEVEL = 100;
@@ -163,11 +155,8 @@ function cleanRealName(value) {
   return name.length >= 2 && name.length <= 60 && /^[\p{L}\p{N} .,'-]+$/u.test(name) ? name : null;
 }
 
-/** A known department id, or a free-text name (lowest working level). Null when neither is valid. */
+/** The department is written in by hand: 2–60 characters, no control characters. Null when invalid. */
 function resolveDepartment(body) {
-  const known = DEPARTMENTS[String(body.department ?? '')];
-  if (known) return known;
-
   const name = String(body.customDepartment ?? '').replace(/\s+/g, ' ').trim();
   // eslint-disable-next-line no-control-regex
   if (name.length < 2 || name.length > 60 || /[\x00-\x1f\x7f]/.test(name)) return null;

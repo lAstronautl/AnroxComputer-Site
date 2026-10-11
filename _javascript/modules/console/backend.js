@@ -239,11 +239,6 @@ export class LocalBackend {
   }
 }
 
-/** How a department goes over the wire: a known id, or the free-text name. */
-function departmentFields(department) {
-  return department.custom ? { customDepartment: department.name } : { department: department.id };
-}
-
 export class RemoteBackend {
   constructor(baseUrl) {
     this.base = baseUrl.replace(/\/+$/, '');
@@ -347,7 +342,7 @@ export class RemoteBackend {
   }
 
   async addUser(actor, { name, realName, department, level, password }) {
-    return this.call('POST', '/api/adduser', { name, realName, ...departmentFields(department), level, password });
+    return this.call('POST', '/api/adduser', { name, realName, customDepartment: department.name, level, password });
   }
 
   async staff() {
@@ -367,7 +362,7 @@ export class RemoteBackend {
   }
 
   async transfer(actor, name, department) {
-    return this.call('POST', '/api/transfer', { name, ...departmentFields(department) });
+    return this.call('POST', '/api/transfer', { name, customDepartment: department.name });
   }
 
   async resetPassword(actor, name, password) {
