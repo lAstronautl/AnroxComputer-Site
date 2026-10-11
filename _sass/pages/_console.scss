@@ -137,3 +137,18 @@
 .console-only {
   display: none !important;
 }
+
+/* flashbang: the whole window goes white, then slowly fades back */
+.rp-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #ffffff;
+  pointer-events: none;
+  opacity: 1;
+
+  &.rp-flash-fade {
+    opacity: 0;
+    transition: opacity 5s ease-out;
+  }
+}

@@ -44,6 +44,12 @@ export function updateUser(name, patch) {
   return users[key];
 }
 
+export function deleteUser(name) {
+  const users = loadUsers();
+  delete users[userKey(name)];
+  saveUsers(users);
+}
+
 export function getSessionName() {
   try {
     return sessionStorage.getItem(SESSION_KEY);

@@ -136,6 +136,56 @@ export class ConsoleSound {
     }
   }
 
+  /** Synthesised flashbang: a loud crack, then a ringing in the ears while everything else is muffled. */
+  flashbang() {
+    this.unlock();
+    if (!this.enabled || !this.ctx) return;
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // everything already playing (the ambient loop) is muffled for a few seconds
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setValueAtTime(this.master.gain.value, now);
+    this.master.gain.linearRampToValueAtTime(0.12, now + 0.05);
+    this.master.gain.setValueAtTime(0.12, now + 4.5);
+    this.master.gain.linearRampToValueAtTime(1, now + 7);
+
+    const out = ctx.createGain();
+    out.gain.value = 1;
+    out.connect(ctx.destination); // bypass the muffled master
+
+    // the bang: white noise with a fast decay
+    const length = Math.floor(ctx.sampleRate * 0.9);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 3;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.setValueAtTime(9000, now);
+    lowpass.frequency.exponentialRampToValueAtTime(400, now + 0.8);
+    const bang = ctx.createGain();
+    bang.gain.setValueAtTime(0.9, now);
+    bang.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    noise.connect(lowpass).connect(bang).connect(out);
+    noise.start(now);
+
+    // the ringing: a high sine that fades out slowly
+    const ring = ctx.createOscillator();
+    ring.type = 'sine';
+    ring.frequency.value = 3150;
+    const ringGain = ctx.createGain();
+    ringGain.gain.setValueAtTime(0.0001, now);
+    ringGain.gain.linearRampToValueAtTime(0.16, now + 0.15);
+    ringGain.gain.setValueAtTime(0.16, now + 2);
+    ringGain.gain.exponentialRampToValueAtTime(0.0001, now + 7);
+    ring.connect(ringGain).connect(out);
+    ring.start(now);
+    ring.stop(now + 7.2);
+  }
+
   /** A faint key-click for the typewriter effect. */
   tick() {
     this.click(0.16, 0.045); // never more than ~22 clicks a second

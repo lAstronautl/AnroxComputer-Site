@@ -10,6 +10,7 @@ import { ESC, c, crlf, visibleLength } from './ansi';
 import {
   buildFs,
   createUser,
+  deleteUser,
   getSessionName,
   getUser,
   logAttempt,
@@ -27,7 +28,7 @@ const NAME_RULE = /^[\p{L}\p{N}_-]{2,24}$/u;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // typewriter: one character every CHAR_MS; escape sequences cost nothing and are never split
-const CHAR_MS = 6;
+const CHAR_MS = 10;
 const PUMP_MS = 16;
 const FAST_AFTER = 700; // long dumps speed up so a big file never takes more than a few seconds
 const UNITS = /\x1b\[[0-9;?]*[A-Za-z~]|\x1b[\s\S]|[\s\S]/gu; // eslint-disable-line no-control-regex
@@ -348,7 +349,7 @@ class Shell {
     let prefix = '';
 
     if (parts.length === 1) {
-      options = Object.keys(this.commands).filter((name) => name.startsWith(word.toLowerCase()));
+      options = Object.keys(this.commands).filter((name) => !this.commands[name].hidden && name.startsWith(word.toLowerCase()));
     } else {
       const slash = word.lastIndexOf('/');
       prefix = word.slice(0, slash + 1);
@@ -530,10 +531,13 @@ class Shell {
         auth: true,
         run: (args) => this.cmdRead(args)
       },
-      goto: {
-        desc: 'открыть статью на сайте (goto <номер|слово>)',
-        auth: true,
-        run: (args) => this.cmdGoto(args)
+      explosionegg: {
+        hidden: true, // secret: not in help, not in tab completion
+        run: () => this.cmdExplosionEgg()
+      },
+      flashbang: {
+        desc: 'светошумовая граната',
+        run: () => this.cmdFlashbang()
       },
       sound: {
         desc: 'звук консоли (sound on | off)',
@@ -557,6 +561,7 @@ class Shell {
     commands.open = commands.cat;
     commands.find = commands.search;
     commands.cls = commands.clear;
+    commands.флешбенг = commands.flashbang;
     commands.posts = commands.articles;
     commands.статьи = commands.articles;
     commands.exit = commands.logout;
@@ -568,7 +573,7 @@ class Shell {
     const shown = new Set();
     this.println(c.bold(c.red('Команды:')));
     for (const [name, command] of Object.entries(this.commands)) {
-      if (shown.has(command) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?'].includes(name)) continue;
+      if (shown.has(command) || command.hidden || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?'].includes(name)) continue;
       shown.add(command);
       this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}${command.auth && !this.user ? c.grey('  [после входа]') : ''}`);
     }
@@ -864,7 +869,7 @@ class Shell {
       const where = article.categories ? c.grey(`  [${article.categories}]`) : '';
       this.println(`  ${c.bright(String(i + 1).padStart(2))}. ${article.title}${where}`);
     });
-    this.println(c.grey('read <номер> — прочитать здесь, goto <номер> — открыть на сайте.'));
+    this.println(c.grey('read <номер|слово> — прочитать статью.'));
   }
 
   /** Word wrap to the terminal width, so words are not cut in the middle. */
@@ -908,19 +913,45 @@ class Shell {
     this.println('');
     this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: интерактивная карта, схема или изображение)'));
     this.println(c.red('─'.repeat(44)));
-    this.println(c.grey(`На сайте: goto ${article.title}`));
     this.log({ action: 'article', target: article.title });
   }
 
-  async cmdGoto(args) {
-    const article = await this.pickArticle(args, 'goto <номер|слово>');
-    if (!article) return;
+  async cmdExplosionEgg() {
+    if (!this.user) {
+      this.println(c.red('ДОСТУП ЗАПРЕЩЁН.'));
+      return;
+    }
 
-    this.println(c.green(`Открываю «${article.title}» ...`));
-    this.log({ action: 'article', target: article.title });
+    const name = this.user.name;
+    this.println(c.red('ПРОТОКОЛ «ВЗРЫВНОЕ ЯЙЦО» АКТИВИРОВАН.'));
     await this.flush();
-    await sleep(400);
-    window.location.href = article.url;
+    for (const line of ['Отзыв допуска', 'Изъятие личных вещей', 'Удаление из реестра']) {
+      await sleep(500);
+      this.println(c.grey(`${line} `.padEnd(30, '.') + ' ') + c.green('OK'));
+      await this.flush();
+    }
+
+    await sleep(500);
+    deleteUser(name);
+    this.user = null;
+    this.cwd = '/';
+    setSessionName(null);
+    this.println(c.bold(c.red(`СОТРУДНИК ${name} СНЯТ С ДОЛЖНОСТИ. ДОСТУП АННУЛИРОВАН.`)));
+    this.println(c.grey('Аккаунт удалён. Для нового доступа: register.'));
+  }
+
+  cmdFlashbang() {
+    this.println(c.red('ВНИМАНИЕ: светошумовая граната!'));
+    this.println(c.grey('Звук громкий, экран ярко вспыхнет. Закройте глаза.'));
+
+    const flash = document.createElement('div');
+    flash.className = 'rp-flash';
+    document.body.append(flash);
+    this.sound?.flashbang();
+
+    // the screen stays white for a moment, then slowly recovers
+    setTimeout(() => flash.classList.add('rp-flash-fade'), 1200);
+    setTimeout(() => flash.remove(), 6500);
   }
 
   cmdSound(args) {
@@ -976,12 +1007,12 @@ class Shell {
     this.println(c.grey(this.data.version ?? ''));
     if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
     await this.flush();
-    this.println(c.grey('Проверка каналов связи ...... ') + c.green('OK'));
-    await this.flush();
-    await sleep(150);
-    this.println(c.grey('Шифрование ................... ') + c.green('OK'));
-    await this.flush();
-    await sleep(150);
+    const checks = this.data.boot_checks ?? ['Проверка каналов связи', 'Шифрование'];
+    for (const check of checks) {
+      this.println(c.grey(`${check} `.padEnd(38, '.') + ' ') + c.green('OK'));
+      await this.flush();
+      await sleep(120 + Math.random() * 180);
+    }
 
     const stored = getSessionName();
     const user = stored ? getUser(stored) : null;
