@@ -116,5 +116,6 @@ export function tileFrames() {
   window.addEventListener('resize', later);
   window.addEventListener('load', layout);
   document.addEventListener('anco-view-change', layout);
+  document.addEventListener('anco-feed-change', layout);
   new ResizeObserver(later).observe(list);
 }
