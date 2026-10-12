@@ -188,9 +188,14 @@ class Theme {
     const root = document.documentElement;
     if (!saved || !this.THEMES.includes(saved)) {
       root.classList.add('boot-choose');
-    } else if (saved === this.CONSOLE && splash !== 'off' && !done) {
+    } else if (saved === this.CONSOLE && splash !== 'off' && (!done || this.#isReload)) {
       root.classList.add('boot-run');
     }
+  }
+
+  /** A page reload (F5) counts as coming back to the site, so the boot screen plays again. */
+  static get #isReload() {
+    return performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
   }
 
   /**

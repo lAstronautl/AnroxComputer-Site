@@ -125,6 +125,111 @@ html[data-mode^='console'] {
   }
 }
 
+/* ---------- CRT motion: crawling scanlines, a rolling band, flicker and short glitch bursts ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-mode='console'] {
+    /* the dark scanlines slowly crawl down the screen (30px is ten scanline periods: the loop is seamless) */
+    body::after {
+      background-size: auto, auto;
+      animation: crt-crawl 3s linear infinite;
+    }
+
+    /* a soft bright band rolls from top to bottom now and then */
+    body::before {
+      content: '';
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: -20vh;
+      height: 18vh;
+      z-index: 9998;
+      pointer-events: none;
+      background: linear-gradient(to bottom, rgb(240 90 90 / 0%), rgb(240 90 90 / 7%), rgb(240 90 90 / 0%));
+      animation: crt-roll 7s linear infinite;
+    }
+
+    /* a barely visible brightness flicker over everything */
+    &::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9997;
+      pointer-events: none;
+      background: rgb(240 90 90 / 3%);
+      animation: crt-flicker 3.7s steps(1) infinite;
+    }
+
+    /* glitch burst (class added for ~0.2 s by terminal-fx.js): torn rows, red ghosting and a displaced band */
+    &.crt-glitch {
+      :is(article p, article h1, article h2, article h3, article li, .post-preview, .card, #sidebar .nav-item, .tag):nth-child(odd) {
+        transform: translateX(var(--gx, 4px));
+      }
+
+      :is(article p, article h1, article h2, article h3, article li, .post-preview, .card, #sidebar .nav-item, .tag):nth-child(even) {
+        transform: translateX(calc(var(--gx, 4px) * -1.4));
+      }
+
+      body {
+        text-shadow:
+          2px 0 rgb(255 0 0 / 70%),
+          -2px 0 rgb(110 0 0 / 80%);
+      }
+
+      &::before {
+        content: '';
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: var(--gy, 40%);
+        height: 6vh;
+        z-index: 9998;
+        pointer-events: none;
+        background: rgb(255 70 70 / 14%);
+        backdrop-filter: blur(1.2px) saturate(1.8);
+        transform: translateX(var(--gx, 4px));
+      }
+    }
+  }
+}
+
+@keyframes crt-crawl {
+  to {
+    background-position:
+      0 30px,
+      0 0;
+  }
+}
+
+@keyframes crt-roll {
+  to {
+    top: 120vh;
+  }
+}
+
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  30% {
+    opacity: 0.2;
+  }
+
+  34% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0.5;
+  }
+
+  72% {
+    opacity: 1;
+  }
+}
+
 /* ---------- boot overlay: first-visit theme picker and console boot screen ---------- */
 
 #boot-overlay {

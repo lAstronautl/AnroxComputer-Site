@@ -1,6 +1,6 @@
 /**
  * Terminal effects for the console site theme (data-mode="console"):
- * - a post is "typed" on screen the first time it is opened in a session
+ * - a post is "typed" on screen every time it is opened (a click or key press skips the typing)
  * - hovering links, cards and buttons plays a short typing sound
  * Sound is on by default (same switch as the console tab) and waits for the first click or key,
  * because browsers only allow audio after a user gesture.
@@ -14,27 +14,10 @@ const SKIP = 'pre, code, table, figure, img, svg, canvas, iframe, details, scrip
 const HOVER = 'a, button, summary, label, .card, .post-preview, .nav-link, .tag, .btn';
 const CHAR_MS = 7;
 const MAX_MS = 5000;
-const SEEN_KEY = 'anco-fx-typed';
 
 const sound = new ConsoleSound({});
 
 const isConsoleTheme = () => /^console/.test(document.documentElement.getAttribute('data-mode') ?? '');
-
-function readSeen() {
-  try {
-    return JSON.parse(sessionStorage.getItem(SEEN_KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
-
-function markSeen(path) {
-  try {
-    sessionStorage.setItem(SEEN_KEY, JSON.stringify([...new Set([...readSeen(), path])]));
-  } catch {
-    // storage blocked: the post will simply be typed again next time
-  }
-}
 
 /* ---------- hover sound ---------- */
 
@@ -134,10 +117,9 @@ function typePost() {
   }
 
   const ready = () => article.setAttribute('data-fx-ready', 'true');
-  const path = location.pathname;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  if (!isConsoleTheme() || reduced || location.hash || readSeen().includes(path)) {
+  if (!isConsoleTheme() || reduced || location.hash) {
     ready();
     return;
   }
@@ -179,10 +161,9 @@ function typePost() {
       part.hidden.remove();
     }
     caret.remove();
-    for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+    for (const type of ['pointerdown', 'keydown', 'touchstart']) {
       window.removeEventListener(type, finish);
     }
-    markSeen(path);
   };
 
   const step = () => {
@@ -221,11 +202,35 @@ function typePost() {
 
   ready();
   requestAnimationFrame(() => {
-    for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+    for (const type of ['pointerdown', 'keydown', 'touchstart']) {
       window.addEventListener(type, finish, { passive: true });
     }
     requestAnimationFrame(step);
   });
+}
+
+/* ---------- screen glitch bursts ---------- */
+
+function initGlitch() {
+  const root = document.documentElement;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  const schedule = () => {
+    setTimeout(burst, 4000 + Math.random() * 7000);
+  };
+
+  const burst = () => {
+    if (isConsoleTheme() && !reduced.matches && !document.hidden) {
+      const sign = Math.random() < 0.5 ? -1 : 1;
+      root.style.setProperty('--gx', `${sign * (3 + Math.random() * 6)}px`);
+      root.style.setProperty('--gy', `${5 + Math.random() * 85}%`);
+      root.classList.add('crt-glitch');
+      setTimeout(() => root.classList.remove('crt-glitch'), 140 + Math.random() * 140);
+    }
+    schedule();
+  };
+
+  schedule();
 }
 
 export function terminalFx() {
@@ -235,6 +240,7 @@ export function terminalFx() {
   window.__terminalFx = true;
 
   initHoverSound();
+  initGlitch();
   initSoundSwitch();
   typePost();
 }
