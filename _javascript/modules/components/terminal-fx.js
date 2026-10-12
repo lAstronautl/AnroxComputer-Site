@@ -23,9 +23,11 @@ const isConsoleTheme = () => /^console/.test(document.documentElement.getAttribu
 /* ---------- hover sound ---------- */
 
 function initHoverSound() {
+  // browsers start audio only after a click / key press: create the context now and resume it on the first one
+  sound.unlock();
   const unlock = () => sound.unlock();
-  for (const type of ['pointerdown', 'keydown', 'touchstart']) {
-    document.addEventListener(type, unlock, { once: true, passive: true });
+  for (const type of ['pointerdown', 'keydown', 'touchstart', 'click']) {
+    document.addEventListener(type, unlock, { passive: true });
   }
 
   let last = null;
@@ -46,16 +48,13 @@ function initHoverSound() {
     }
     last = element;
 
+    // a single key click per element; sweeping the pointer across many of them is rate-limited
     const now = performance.now();
-    if (now - lastAt < 140) {
+    if (now - lastAt < 220) {
       return;
     }
     lastAt = now;
-
-    // three quick key clicks, like a short burst of typing
-    for (let i = 0; i < 3; i += 1) {
-      setTimeout(() => sound.tick(), i * 55);
-    }
+    sound.key();
   });
 }
 
@@ -138,6 +137,7 @@ function typePost() {
   let index = 0;
   let offset = 0;
   let finished = false;
+  let skipHandler = null;
   const started = performance.now();
 
   const finish = () => {
@@ -152,7 +152,7 @@ function typePost() {
     }
     caret.remove();
     for (const type of ['click', 'keydown']) {
-      window.removeEventListener(type, finish);
+      window.removeEventListener(type, skipHandler);
     }
   };
 
@@ -205,9 +205,18 @@ function typePost() {
 
   ready();
   requestAnimationFrame(() => {
-    // a tap or key press skips the typing; scrolling (touch swipes included) does not
+    // a tap or key press skips the typing; scrolling (touch swipes included) does not.
+    // While the browser still keeps the audio locked, that first tap only unlocks it, so the typing sound can start.
+    const skip = () => {
+      if (sound.enabled && sound.ctx && sound.ctx.state !== 'running') {
+        sound.unlock();
+        return;
+      }
+      finish();
+    };
+    skipHandler = skip;
     for (const type of ['click', 'keydown']) {
-      window.addEventListener(type, finish, { passive: true });
+      window.addEventListener(type, skip, { passive: true });
     }
     requestAnimationFrame(step);
   });
