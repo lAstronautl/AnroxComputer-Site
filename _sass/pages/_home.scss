@@ -269,38 +269,62 @@ html:not([data-view='list']) #post-list {
   .tile-cell {
     position: relative;
     display: flex;
-    padding: 0.5rem;
-    border: 2px solid transparent;
+    padding: 1.1rem;
 
-    &.edge-t {
+    /* frame line is drawn inset, so frames of neighbouring categories stay apart */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0.45rem;
+      border: 2px solid transparent;
+      pointer-events: none;
+    }
+
+    &:not(.edge-t)::before {
+      top: 0;
+    }
+
+    &:not(.edge-b)::before {
+      bottom: 0;
+    }
+
+    &:not(.edge-l)::before {
+      left: 0;
+    }
+
+    &:not(.edge-r)::before {
+      right: 0;
+    }
+
+    &.edge-t::before {
       border-top-color: var(--heading-color);
     }
 
-    &.edge-b {
+    &.edge-b::before {
       border-bottom-color: var(--heading-color);
     }
 
-    &.edge-l {
+    &.edge-l::before {
       border-left-color: var(--heading-color);
     }
 
-    &.edge-r {
+    &.edge-r::before {
       border-right-color: var(--heading-color);
     }
 
-    &.corner-tl {
+    &.corner-tl::before {
       border-top-left-radius: 0.7rem;
     }
 
-    &.corner-tr {
+    &.corner-tr::before {
       border-top-right-radius: 0.7rem;
     }
 
-    &.corner-bl {
+    &.corner-bl::before {
       border-bottom-left-radius: 0.7rem;
     }
 
-    &.corner-br {
+    &.corner-br::before {
       border-bottom-right-radius: 0.7rem;
     }
   }
@@ -308,8 +332,8 @@ html:not([data-view='list']) #post-list {
   /* the category name sits on the bottom edge of the frame, at its left */
   .tile-group-label {
     position: absolute;
-    left: 1rem;
-    bottom: -0.85rem;
+    left: 1.6rem;
+    bottom: -0.25rem;
     z-index: 1;
     display: block;
     padding: 0 0.6rem;
