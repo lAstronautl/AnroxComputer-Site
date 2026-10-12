@@ -398,7 +398,12 @@ class Shell {
     let prefix = '';
 
     if (parts.length === 1) {
-      options = Object.keys(this.commands).filter((name) => !this.commands[name].hidden && !(this.commands[name].admin && !this.isAdmin()) && name.startsWith(word.toLowerCase()));
+      options = Object.keys(this.commands).filter(
+        (name) =>
+          !this.commands[name].hidden &&
+          this.commandLevel(this.commands[name]) <= (this.user?.level ?? 0) &&
+          name.startsWith(word.toLowerCase())
+      );
     } else {
       const slash = word.lastIndexOf('/');
       prefix = word.slice(0, slash + 1);
@@ -772,13 +777,12 @@ class Shell {
     return command.auth ? 1 : 0;
   }
 
-  /** Commands grouped by the position that unlocks them, up to the reader's own level. */
+  /** Commands grouped by the position that unlocks them; only those the reader can use are listed. */
   cmdHelp() {
     const aliases = ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox', 'home'];
     const shown = new Set();
     const groups = new Map();
-    // a guest still sees what signing in gives (level 1), but not the management commands
-    const reach = Math.max(this.user?.level ?? 0, 1);
+    const reach = this.user?.level ?? 0; // only what this reader can actually use
 
     for (const [name, command] of Object.entries(this.commands)) {
       if (shown.has(command) || command.hidden || aliases.includes(name)) continue;
@@ -791,10 +795,9 @@ class Shell {
 
     this.println(c.bold(c.red('Команды по должностям:')));
     for (const level of [...groups.keys()].sort((a, b) => a - b)) {
-      const locked = level > (this.user?.level ?? 0);
       const title = level === 0 ? 'ДЛЯ ВСЕХ' : `${this.levelName(level)} (L${level}+)`;
       this.println('');
-      this.println(`${c.red(`── ${title} `)}${c.grey(locked ? '── после входа' : '')}`);
+      this.println(c.red(`── ${title} `));
       for (const { name, command } of groups.get(level)) {
         this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}`);
       }

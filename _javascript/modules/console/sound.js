@@ -41,6 +41,15 @@ export class ConsoleSound {
     }
     this.volume = volume;
     if (volume === 0) this.enabled = false;
+
+    // an "off" left by the old sound button does not count: until the knob has been used the sound is on
+    let usedKnob = false;
+    try {
+      usedKnob = localStorage.getItem(VOLUME_KEY) !== null;
+    } catch {
+      // ignore
+    }
+    if (!usedKnob) this.enabled = true;
   }
 
   /** What actually reaches the speakers: the volume knob, or silence when muted. */
