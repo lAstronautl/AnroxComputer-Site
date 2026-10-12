@@ -20,7 +20,6 @@ const REAL_NAME_RULE = /^[\p{L}\p{N} .,'-]{2,60}$/u;
 
 // the "staff" list hides real names behind shimmering symbols
 const GLYPHS = '#$@%&!*?§¤^+=~<>/|';
-const NAME_COLUMN = { start: 24, width: 14 }; // 1-based terminal column and width of the name field in the staff table
 const SHIMMER_MS = 140;
 const SHIMMER_TOTAL = 3500;
 
@@ -198,7 +197,7 @@ class Shell {
   }
 
   /** Re-draws the hidden-name cells of the staff table with fresh random symbols for a few seconds. */
-  startShimmer({ count }) {
+  startShimmer({ count, col, width }) {
     this.stopShimmer();
     if (this.busy || this.askState) return;
 
@@ -212,7 +211,7 @@ class Shell {
       let out = '';
       for (let i = 0; i < count; i += 1) {
         const up = count - i + 1; // rows between this table row and the prompt line
-        out += `${ESC}[${up}A${ESC}[${NAME_COLUMN.start}G${c.grey(scramble(NAME_COLUMN.width))}${ESC}[${up}B`;
+        out += `${ESC}[${up}A${ESC}[${col}G${c.grey(scramble(width))}${ESC}[${up}B`;
       }
       const column = visibleLength(this.promptText) + this.cursor + 1;
       this.term.write(`${out}${ESC}[${column}G`);
@@ -1210,22 +1209,32 @@ class Shell {
     const seeReal = this.isAdmin();
     const cell = (text, width) => String(text).slice(0, width).padEnd(width);
 
+    // narrow terminals (phones) get a compact table without the department column
+    const compact = (this.term.cols ?? 80) < 64;
+    const callsignWidth = compact ? 12 : 16;
+    const nameWidth = compact ? 11 : 14;
+    const nameColumn = 2 + 2 + 2 + callsignWidth + 1 + 1; // 1-based terminal column where the name field starts
+
     this.println(c.bold(c.red(`Персонал АнКо — ${list.length}`)));
-    this.println(c.grey(`  ${'№'.padStart(2)}  ${cell('Позывной', 16)} ${cell('Имя', NAME_COLUMN.width)} ${cell('Отдел', 14)} Уровень`));
+    this.println(
+      c.grey(
+        `  ${'№'.padStart(2)}  ${cell('Позывной', callsignWidth)} ${cell('Имя', nameWidth)} ${compact ? '' : `${cell('Отдел', 14)} `}Уровень`
+      )
+    );
 
     list.forEach((person, i) => {
       const me = this.user && person.name.toLowerCase() === this.user.name.toLowerCase();
-      const callsign = cell(me ? `${person.name} *` : person.name, 16);
+      const callsign = cell(me ? `${person.name} *` : person.name, callsignWidth);
       // real names are for level 10+; everyone else sees noise
-      const real = seeReal ? c.bright(cell(person.realName || '—', NAME_COLUMN.width)) : c.grey(scramble(NAME_COLUMN.width));
-      const department = cell(this.shortDepartment(person.department), 14);
-      const level = `${this.levelName(person.level)} (L${person.level})`;
-      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(callsign) : c.bright(callsign)} ${real} ${department} ${c.amber(level)}`);
+      const real = seeReal ? c.bright(cell(person.realName || '—', nameWidth)) : c.grey(scramble(nameWidth));
+      const department = compact ? '' : `${cell(this.shortDepartment(person.department), 14)} `;
+      const level = compact ? `L${person.level}` : `${this.levelName(person.level)} (L${person.level})`;
+      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(callsign) : c.bright(callsign)} ${real} ${department}${c.amber(level)}`);
     });
     this.println(c.grey('* — это вы.'));
 
     const fits = list.length + 4 <= (this.term.rows ?? 24);
-    if (!seeReal && fits) this.pendingShimmer = { count: list.length };
+    if (!seeReal && fits) this.pendingShimmer = { count: list.length, col: nameColumn, width: nameWidth };
   }
 
   async cmdSetName(args) {
@@ -1543,13 +1552,14 @@ class Shell {
       await sleep(40);
     }
     this.println('');
-    this.println(c.bright(this.data.title ?? 'КОНСОЛЬ'));
+    for (const line of this.wrap(this.data.title ?? 'КОНСОЛЬ').split('\n')) this.println(c.bright(line));
     this.println(c.grey(this.data.version ?? ''));
     if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
     await this.flush();
     const checks = this.data.boot_checks ?? ['Проверка каналов связи', 'Шифрование'];
     for (const check of checks) {
-      this.println(c.grey(`${check} `.padEnd(38, '.') + ' ') + c.green('OK'));
+      const dots = Math.max(check.length + 3, Math.min(38, (this.term.cols ?? 80) - 5));
+      this.println(c.grey(`${check} `.padEnd(dots, '.') + ' ') + c.green('OK'));
       await this.flush();
       await sleep(120 + Math.random() * 180);
     }
@@ -1561,7 +1571,7 @@ class Shell {
       this.mailNotice();
     } else {
       this.println('');
-      this.println(`Для доступа: ${c.amber('login')} — вход, ${c.amber('help')} — команды.`);
+      this.println(`Для доступа: ${c.amber('login')} — вход, ${c.amber('help')} — команды`);
     }
     this.println('');
 

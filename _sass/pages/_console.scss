@@ -41,6 +41,13 @@
   &:hover,
   &:focus-visible {
     color: #fff1f1;
+    outline: none;
+  }
+
+  /* the letter-spacing is too wide for a phone */
+  @media (max-width: 480px) {
+    letter-spacing: 0.05em;
+    font-size: 0.9rem;
   }
 }
 
@@ -104,6 +111,14 @@
     border-radius: 0;
     box-shadow: none;
     text-shadow: 0 0 6px rgb(255 59 59 / 55%);
+  }
+
+  /* phones: a smaller font gives ~45 columns instead of ~33, so tables and the boot lines do not wrap */
+  @media (max-width: 480px) {
+    .wterm {
+      --term-font-size: 12px;
+      --term-row-height: 15px;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
