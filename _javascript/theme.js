@@ -113,6 +113,8 @@ class Theme {
    * Initializes the theme based on system preferences or stored mode
    */
   static init() {
+    this.#restoreView();
+
     if (!this.switchable) {
       this.#restoreTheme();
       return;
@@ -190,6 +192,17 @@ class Theme {
       root.classList.add('boot-choose');
     } else if (saved === this.CONSOLE && splash !== 'off' && (!done || this.#isReload)) {
       root.classList.add('boot-run');
+    }
+  }
+
+  /** The post list view: tiles by default, the old long cards when the reader chose "list". */
+  static #restoreView() {
+    try {
+      if (localStorage.getItem('anco-view') === 'list') {
+        document.documentElement.setAttribute('data-view', 'list');
+      }
+    } catch {
+      // storage blocked: tiles
     }
   }
 

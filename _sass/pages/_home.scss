@@ -195,3 +195,130 @@
     }
   }
 }
+
+/* Post list view switch (tiles are the main view, the old long cards stay as "list") */
+.view-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin: 1.5rem 0 -1rem;
+
+  @include bp.lg {
+    margin-top: 2rem;
+  }
+
+  .view-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--main-border-color);
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--text-muted-color);
+    font-size: 0.8rem;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--link-color);
+      border-color: var(--link-color);
+      outline: none;
+    }
+
+    &[aria-pressed='true'] {
+      color: var(--sidebar-active-color, #ffffff);
+      background: var(--sidebar-hover-bg, #620505);
+      border-color: var(--link-color);
+    }
+  }
+}
+
+/* Tiles: a grid of squares-ish cards, big picture on top, title below */
+html:not([data-view='list']) #post-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
+
+  @include bp.md {
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: 1rem;
+  }
+
+  .card-wrapper {
+    display: flex;
+    margin: 0 !important;
+
+    &:not(:last-child) {
+      margin-bottom: 0 !important;
+    }
+  }
+
+  .card {
+    width: 100%;
+  }
+
+  .post-preview {
+    flex-direction: column !important;
+    flex-wrap: nowrap;
+    width: 100%;
+    height: 100%;
+
+    .col-md-5,
+    .col-md-7 {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .col-md-7 {
+      flex: 1 1 auto;
+    }
+
+    /* the picture: one shape for all tiles */
+    .col-md-5 {
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+
+      > img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: v.$radius-lg v.$radius-lg 0 0;
+      }
+    }
+
+    .card-body {
+      padding: 0.7rem 0.85rem 0.8rem;
+
+      @include bp.md {
+        padding: 0.9rem 1rem 1rem;
+      }
+
+      .card-title {
+        margin: 0 0 0.3rem !important;
+        font-size: 1rem;
+        line-height: 1.25;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+
+        @include bp.md {
+          font-size: 1.1rem;
+        }
+      }
+
+      /* tiles show no description: the picture and the title are the tile */
+      .card-text {
+        display: none !important;
+      }
+
+      .post-meta {
+        font-size: 0.78rem;
+      }
+    }
+  }
+}

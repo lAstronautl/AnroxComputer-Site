@@ -52,6 +52,11 @@ layout: default
   {% endfor %}
 {% endif %}
 
+<div class="view-switch" role="group" aria-label="Вид списка постов">
+  <button type="button" class="view-switch-btn" data-view="tiles" aria-pressed="true"><i class="fas fa-table-cells-large"></i> Плитки</button>
+  <button type="button" class="view-switch-btn" data-view="list" aria-pressed="false"><i class="fas fa-list"></i> Список</button>
+</div>
+
 <div id="post-list" class="flex-grow-1 px-xl-1">
   {% for post in posts %}
     <article class="card-wrapper card">
