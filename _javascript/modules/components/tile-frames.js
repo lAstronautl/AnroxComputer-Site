@@ -2,7 +2,8 @@
  * Draws the category frames around the post tiles on the home page.
  * The tiles of one category are neighbours in a single grid, so a group can be an L-shape or any other
  * block of cells. A cell gets an `edge-*` class on every side that faces another category (or the outside),
- * which together draw the outline of the group; `corner-*` rounds the outer corners. The category name is
+ * which together draw the outline of the group; `corner-*` rounds the outer corners and `inner-*` draws the
+ * inner (concave) corners of L-shapes. The category name is
  * put on the bottom edge of the lowest-left cell of its group.
  */
 
@@ -59,7 +60,14 @@ export function tileFrames() {
         ['b', 'l'],
         ['b', 'r']
       ]) {
-        if (open.has(a) && open.has(b)) item.cell.classList.add(`corner-${a}${b}`);
+        if (open.has(a) && open.has(b)) {
+          item.cell.classList.add(`corner-${a}${b}`);
+        } else if (!open.has(a) && !open.has(b)) {
+          // concave corner: both neighbours belong to the group, the diagonal one does not
+          const dRow = a === 't' ? -1 : 1;
+          const dCol = b === 'l' ? -1 : 1;
+          if (!sameGroup(item, item.row + dRow, item.col + dCol)) item.cell.classList.add(`inner-${a}${b}`);
+        }
       }
     }
 

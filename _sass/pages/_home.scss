@@ -327,6 +327,44 @@ html:not([data-view='list']) #post-list {
     &.corner-br::before {
       border-bottom-right-radius: 0.7rem;
     }
+
+    /* concave corner of an L-shaped frame: a small elbow in the cell's corner */
+    &[class*='inner-']::after {
+      content: '';
+      position: absolute;
+      width: calc(0.45rem + 2px);
+      height: calc(0.45rem + 2px);
+      border: 0 solid var(--heading-color);
+      pointer-events: none;
+    }
+
+    &.inner-tl::after {
+      top: 0;
+      left: 0;
+      border-width: 0 2px 2px 0;
+      border-bottom-right-radius: 0.5rem;
+    }
+
+    &.inner-tr::after {
+      top: 0;
+      right: 0;
+      border-width: 0 0 2px 2px;
+      border-bottom-left-radius: 0.5rem;
+    }
+
+    &.inner-bl::after {
+      bottom: 0;
+      left: 0;
+      border-width: 2px 2px 0 0;
+      border-top-right-radius: 0.5rem;
+    }
+
+    &.inner-br::after {
+      bottom: 0;
+      right: 0;
+      border-width: 2px 0 0 2px;
+      border-top-left-radius: 0.5rem;
+    }
   }
 
   /* the category name sits on the bottom edge of the frame, at its left */
