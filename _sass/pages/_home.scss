@@ -475,3 +475,12 @@ html:not([data-view='list']) #post-list {
     }
   }
 }
+
+/* tiles not yet reached by the infinite feed */
+#post-list .tile-cell.feed-hidden {
+  display: none !important;
+}
+
+.feed-sentinel {
+  height: 1px;
+}

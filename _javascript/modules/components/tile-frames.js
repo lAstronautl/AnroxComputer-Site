@@ -23,9 +23,9 @@ export function tileFrames() {
   ];
 
   const layout = () => {
-    const cells = [...list.querySelectorAll('.tile-cell')];
-    for (const cell of cells) {
-      cell.className = 'tile-cell';
+    const cells = [...list.querySelectorAll('.tile-cell:not(.feed-hidden)')];
+    for (const cell of list.querySelectorAll('.tile-cell')) {
+      cell.className = cell.classList.contains('feed-hidden') ? 'tile-cell feed-hidden' : 'tile-cell';
       cell.querySelector('.tile-group-label')?.remove();
     }
     if (root.getAttribute('data-view') === 'list') {
