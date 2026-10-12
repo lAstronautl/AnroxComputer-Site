@@ -1,5 +1,5 @@
 /**
- * Terminal effects for the console site themes (data-mode="console-red" / "console-green"):
+ * Terminal effects for the console site theme (data-mode="console"):
  * - a post is "typed" on screen the first time it is opened in a session
  * - hovering links, cards and buttons plays a short typing sound
  * Sound is on by default (same switch as the console tab) and waits for the first click or key,

@@ -24,19 +24,19 @@ class Theme {
     return 'anco';
   }
 
-  static get CONSOLE_RED() {
-    return 'console-red';
+  static get CONSOLE() {
+    return 'console';
   }
 
   /** Themes the site owner fixes in `theme_mode`; the sidebar button cycles through these (all dark). */
   static get THEMES() {
-    return [this.ANCO, this.CONSOLE_RED];
+    return [this.ANCO, this.CONSOLE];
   }
 
   static get THEME_NAMES() {
     return {
-      [this.ANCO]: 'АнКо',
-      [this.CONSOLE_RED]: 'Консоль'
+      [this.ANCO]: 'Обычная',
+      [this.CONSOLE]: 'Консольная'
     };
   }
 
@@ -105,7 +105,7 @@ class Theme {
       [this.LIGHT]: light,
       [this.DARK]: dark,
       [this.ANCO]: dark,
-      [this.CONSOLE_RED]: dark
+      [this.CONSOLE]: dark
     };
   }
 
@@ -150,6 +150,15 @@ class Theme {
       // storage blocked: keep the theme from the layout
     }
 
+    if (saved === 'console-red') {
+      saved = this.CONSOLE; // the id this theme had before there was only one console theme
+      try {
+        localStorage.setItem(this.#themeKey, saved);
+      } catch {
+        // ignore
+      }
+    }
+
     if (saved && this.THEMES.includes(saved)) {
       document.documentElement.setAttribute(this.#modeAttr, saved);
     }
@@ -179,7 +188,7 @@ class Theme {
     const root = document.documentElement;
     if (!saved || !this.THEMES.includes(saved)) {
       root.classList.add('boot-choose');
-    } else if (saved === this.CONSOLE_RED && splash !== 'off' && !done) {
+    } else if (saved === this.CONSOLE && splash !== 'off' && !done) {
       root.classList.add('boot-run');
     }
   }
@@ -215,7 +224,7 @@ class Theme {
   }
 
   /**
-   * Switches to the next site theme (АнКо ↔ console) and remembers it
+   * Switches to the next site theme (обычная ↔ консольная) and remembers it
    */
   static cycleTheme() {
     const next = this.THEMES[(this.THEMES.indexOf(this.current) + 1) % this.THEMES.length];

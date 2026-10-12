@@ -100,7 +100,7 @@ export function bootScreen() {
     Theme.setTheme(theme);
     root.classList.remove('boot-choose');
 
-    if (theme === Theme.CONSOLE_RED) {
+    if (theme === Theme.CONSOLE) {
       root.classList.add('boot-run');
       void runBoot(overlay, sound);
     } else {
@@ -120,7 +120,7 @@ export function bootScreen() {
     if (event.key === '1') {
       choose(Theme.ANCO);
     } else if (event.key === '2') {
-      choose(Theme.CONSOLE_RED);
+      choose(Theme.CONSOLE);
     }
   });
 

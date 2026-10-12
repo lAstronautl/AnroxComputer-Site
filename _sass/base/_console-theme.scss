@@ -1,10 +1,11 @@
 /*
- * Console theme (data-mode="console-red"): on top of the colours from
- * themes/_console.scss they give the whole site a terminal look — monospace type, glowing text,
+ * Console theme (data-mode="console"): the colours are exactly the АнКо theme's (themes/_anco.scss, see base/_base.scss);
+ * these rules only give the whole site a terminal look — monospace type, glowing text,
  * scanlines, square corners.
  */
 
 html[data-mode^='console'] {
+  --console-glow-rgb: 240 90 90; /* the АнКо accent, used for the text glow */
   --console-font: ui-monospace, sfmono-regular, menlo, consolas, 'Liberation Mono', monospace;
 
   body {
@@ -133,10 +134,10 @@ html[data-mode^='console'] {
   z-index: 100000;
   align-items: center;
   justify-content: center;
-  background: #050000;
-  color: #ff6b6b;
+  background: #000000;
+  color: #f05a5a;
   font-family: ui-monospace, sfmono-regular, menlo, consolas, 'Liberation Mono', monospace;
-  text-shadow: 0 0 6px rgb(214 90 90 / 45%);
+  text-shadow: 0 0 6px rgb(240 90 90 / 45%);
   transition: opacity 0.5s ease;
 
   &.boot-fade {
@@ -187,7 +188,7 @@ html.boot-choose #boot-overlay #boot-choose {
   .boot-hint {
     margin: 0 0 1.4rem;
     font-size: 0.85rem;
-    color: #b45a5a;
+    color: #9e0000;
   }
 
   .boot-options {
@@ -200,10 +201,10 @@ html.boot-choose #boot-overlay #boot-choose {
     width: 100%;
     padding: 0.8rem 1rem;
     text-align: left;
-    border: 1px solid #5a2323;
+    border: 1px solid #620505;
     border-radius: 2px;
-    background: #0d0505;
-    color: #ff6b6b;
+    background: #0d0d0d;
+    color: #f05a5a;
     font: inherit;
     cursor: pointer;
 
@@ -216,15 +217,15 @@ html.boot-choose #boot-overlay #boot-choose {
       display: block;
       margin-top: 0.25rem;
       font-size: 0.8rem;
-      color: #b45a5a;
+      color: #9e0000;
     }
 
     &:hover,
     &:focus-visible {
       outline: none;
-      background: #2a0c0c;
-      border-color: #ff6b6b;
-      color: #ffe3e3;
+      background: #620505;
+      border-color: #f05a5a;
+      color: #ffffff;
     }
   }
 }
@@ -245,7 +246,7 @@ html.boot-run #boot-overlay #boot-screen {
   }
 
   .boot-title {
-    color: #ffe3e3;
+    color: #ffffff;
   }
 }
 
