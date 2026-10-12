@@ -328,42 +328,43 @@ html:not([data-view='list']) #post-list {
       border-bottom-right-radius: 0.7rem;
     }
 
-    /* concave corner of an L-shaped frame: a small elbow in the cell's corner */
+    /* concave corner of an L-shaped frame: an arc whose straight ends lie on the frame lines of the
+       neighbouring cells (box reaches out of the cell by radius - inset) */
     &[class*='inner-']::after {
       content: '';
       position: absolute;
-      width: calc(0.45rem + 1px);
-      height: calc(0.45rem + 1px);
+      width: calc(0.7rem + 1px);
+      height: calc(0.7rem + 1px);
       border: 0 solid var(--heading-color);
       pointer-events: none;
     }
 
     &.inner-tl::after {
-      top: 0;
-      left: 0;
+      top: -0.25rem;
+      left: -0.25rem;
       border-width: 0 1px 1px 0;
-      border-bottom-right-radius: 0.5rem;
+      border-bottom-right-radius: 0.7rem;
     }
 
     &.inner-tr::after {
-      top: 0;
-      right: 0;
+      top: -0.25rem;
+      right: -0.25rem;
       border-width: 0 0 1px 1px;
-      border-bottom-left-radius: 0.5rem;
+      border-bottom-left-radius: 0.7rem;
     }
 
     &.inner-bl::after {
-      bottom: 0;
-      left: 0;
+      bottom: -0.25rem;
+      left: -0.25rem;
       border-width: 1px 1px 0 0;
-      border-top-right-radius: 0.5rem;
+      border-top-right-radius: 0.7rem;
     }
 
     &.inner-br::after {
-      bottom: 0;
-      right: 0;
+      bottom: -0.25rem;
+      right: -0.25rem;
       border-width: 1px 0 0 1px;
-      border-top-left-radius: 0.5rem;
+      border-top-left-radius: 0.7rem;
     }
   }
 
