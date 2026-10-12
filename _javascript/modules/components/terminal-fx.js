@@ -17,18 +17,39 @@ const CHAR_MS = 7;
 const MAX_MS = 5000;
 
 const sound = new ConsoleSound({});
+sound.loopUrl = document.getElementById('boot-overlay')?.dataset.loop ?? '';
 
 const isConsoleTheme = () => /^console/.test(document.documentElement.getAttribute('data-mode') ?? '');
 
 /* ---------- hover sound ---------- */
 
+/* ---------- ambient loop (console theme) ---------- */
+
+// plays while the console theme is on; waits for the browser to allow audio and follows theme / volume changes
+function ensureLoop() {
+  if (isConsoleTheme()) {
+    void sound.startLoop();
+  } else if (sound.playing) {
+    sound.stop();
+  }
+}
+
 function initHoverSound() {
   // browsers start audio only after a click / key press: create the context now and resume it on the first one
   sound.unlock();
-  const unlock = () => sound.unlock();
+  sound.ctx?.addEventListener('statechange', ensureLoop);
+  const unlock = () => {
+    sound.unlock();
+    ensureLoop();
+  };
   for (const type of ['pointerdown', 'keydown', 'touchstart', 'click']) {
     document.addEventListener(type, unlock, { passive: true });
   }
+  window.addEventListener('message', (event) => {
+    if (event.data?.id === 'theme-mode') ensureLoop();
+  });
+  window.addEventListener('pagehide', () => sound.saveLoopPosition());
+  ensureLoop();
 
   let last = null;
   let lastAt = 0;
@@ -72,6 +93,8 @@ function initVolumeKnob() {
     onInput: (value) => {
       sound.unlock();
       sound.setVolume(value);
+      if (value === 0) sound.stop();
+      else ensureLoop();
       sound.tick();
     }
   });
