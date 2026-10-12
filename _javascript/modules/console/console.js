@@ -58,6 +58,7 @@ class Shell {
     this.chain = Promise.resolve(); // account calls run one after another, so a refresh never overtakes a write
     this.sound = null;
     this.articlesUrl = '';
+    this.homeUrl = '';
     this.articles = null;
     this.shimmerTimer = 0;
     this.pendingShimmer = null;
@@ -707,6 +708,10 @@ class Shell {
         desc: 'светошумовая граната',
         run: () => this.cmdFlashbang()
       },
+      site: {
+        desc: 'вернуться на сайт',
+        run: () => this.cmdSite()
+      },
       sound: {
         desc: 'звук консоли (sound on | off)',
         run: (args) => this.cmdSound(args)
@@ -729,6 +734,8 @@ class Shell {
     commands.open = commands.cat;
     commands.find = commands.search;
     commands.cls = commands.clear;
+    commands.home = commands.site;
+    commands.сайт = commands.site;
     commands.useradd = commands.adduser;
     commands.unlock = commands.auth;
     commands.inbox = commands.mail;
@@ -754,7 +761,7 @@ class Shell {
     const shown = new Set();
     this.println(c.bold(c.red('Команды:')));
     for (const [name, command] of Object.entries(this.commands)) {
-      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox'].includes(name)) continue;
+      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox', 'home'].includes(name)) continue;
       shown.add(command);
       this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}${command.auth && !this.user ? c.grey('  [после входа]') : ''}`);
     }
@@ -1503,6 +1510,18 @@ class Shell {
     setTimeout(() => flash.remove(), 6500);
   }
 
+  async cmdSite() {
+    if (!this.homeUrl) {
+      this.println(c.grey('Адрес сайта неизвестен.'));
+      return;
+    }
+
+    this.println(c.grey('Возврат на сайт ...'));
+    await this.flush();
+    await sleep(300);
+    window.location.href = this.homeUrl;
+  }
+
   cmdSound(args) {
     const mode = (args[0] ?? '').toLowerCase();
     if (!this.sound?.supported) {
@@ -1604,6 +1623,7 @@ export async function initConsole() {
   const sound = new ConsoleSound({ startUrl: root.dataset.soundStart, loopUrl: root.dataset.soundLoop });
   shell.sound = sound;
   shell.articlesUrl = root.dataset.articles ?? '';
+  shell.homeUrl = root.dataset.home ?? '';
   const term = new WTerm(screen, {
     cursorBlink: true,
     onData: (input) => shell.handleData(input)

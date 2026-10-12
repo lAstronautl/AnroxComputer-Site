@@ -167,3 +167,83 @@
     transition: opacity 5s ease-out;
   }
 }
+
+/* The console is a separate full-window page (like the document editor): no sidebar, the terminal fills the window */
+html:has(.console-window),
+body:has(.console-window) {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #050000;
+}
+
+.console-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: #050000;
+
+  .console-window-bar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.45rem 0.8rem;
+    border-bottom: 1px solid #3a1414;
+    color: #ff6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    text-shadow: 0 0 6px rgb(255 59 59 / 55%);
+
+    a {
+      color: inherit;
+      text-decoration: none;
+
+      &:hover,
+      &:focus-visible {
+        color: #fff1f1;
+      }
+    }
+  }
+
+  .console-window-title {
+    flex: 1 1 auto;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .console-window-hint {
+    color: #b45a5a;
+  }
+
+  .rp-console-sound-toggle {
+    margin: 0;
+    flex: 0 0 auto;
+  }
+
+  .rp-console {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+
+    .rp-console-screen {
+      height: 100%;
+      min-height: 0;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .console-window-hint {
+      display: none;
+    }
+
+    .console-window-bar {
+      gap: 0.6rem;
+      font-size: 0.78rem;
+    }
+  }
+}
