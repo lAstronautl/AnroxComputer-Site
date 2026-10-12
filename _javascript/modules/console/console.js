@@ -708,7 +708,7 @@ class Shell {
         run: () => this.cmdExplosionEgg()
       },
       flashbang: {
-        desc: 'светошумовая граната',
+        hidden: true, // secret: not in help, not in tab completion
         run: () => this.cmdFlashbang()
       },
       map: {
