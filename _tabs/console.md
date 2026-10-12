@@ -11,7 +11,7 @@ compress_html: false
     <a class="console-window-back" href="{{ '/' | relative_url }}">◄ На сайт</a>
     <span class="console-window-title">АнКо // корпоративная консоль</span>
     <span class="console-window-hint">help — список команд</span>
-    <button type="button" id="rp-console-sound" class="rp-console-sound-toggle" aria-pressed="true" hidden>🔊 Звук: вкл</button>
+    <div id="rp-console-sound" class="rp-knob" hidden></div>
   </header>
 
   <div id="rp-console" class="rp-console" aria-label="Корпоративная консоль"

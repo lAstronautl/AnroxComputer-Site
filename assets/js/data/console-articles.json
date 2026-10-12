@@ -31,6 +31,9 @@ layout: compress
       "url": {{ post.url | relative_url | jsonify }},
       "categories": {{ post.categories | join: ', ' | jsonify }},
       "description": {{ post.description | default: '' | jsonify }},
+      {%- if post.interactive_map.zones %}
+      "zones": {{ post.interactive_map.zones | jsonify }},
+      {%- endif %}
       "text": {{ text | jsonify }}
     }
   {%- endfor -%}

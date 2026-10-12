@@ -7,19 +7,107 @@
   font-size: 0.9rem;
 }
 
-.rp-console-sound-toggle {
-  display: block;
-  margin-left: auto;
-  padding: 0.2rem 0.7rem;
-  border: 1px solid var(--main-border-color, #3a0000);
-  border-radius: 0.4rem;
-  background: transparent;
-  color: var(--text-muted-color);
-  font-size: 0.8rem;
-  cursor: pointer;
+/* Volume knob (console window and, in the console theme, the site sidebar) */
+.rp-knob {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #ff6b6b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 6px rgb(255 59 59 / 55%);
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
 
-  &:hover {
-    color: var(--heading-color);
+  &[hidden] {
+    display: none;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  .rp-knob-label {
+    color: #b45a5a;
+  }
+
+  .rp-knob-value {
+    min-width: 2.6em;
+    text-align: right;
+  }
+
+  .rp-knob-dial {
+    position: relative;
+    flex: 0 0 auto;
+    width: 2.1rem;
+    height: 2.1rem;
+    border: 1px solid #5a2323;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #3a1414, #120505 72%);
+    box-shadow:
+      0 0 0 2px #1a0707,
+      inset 0 0 6px rgb(0 0 0 / 80%),
+      0 0 10px rgb(255 59 59 / 25%);
+
+    /* the scale: eleven notches around the dial, from 0 to 100% */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -7px;
+      border-radius: 50%;
+      background: repeating-conic-gradient(from -137deg, #b45a5a 0 2deg, transparent 2deg 27deg);
+      mask:
+        radial-gradient(circle, transparent 66%, #000000 67%),
+        conic-gradient(from -137deg, #000000 0 274deg, transparent 274deg);
+      mask-composite: intersect;
+      -webkit-mask:
+        radial-gradient(circle, transparent 66%, #000000 67%),
+        conic-gradient(from -137deg, #000000 0 274deg, transparent 274deg);
+      -webkit-mask-composite: source-in;
+      opacity: 0.85;
+    }
+  }
+
+  .rp-knob-needle {
+    position: absolute;
+    inset: 0;
+    transform: rotate(var(--knob-angle, 0deg));
+    transition: transform 0.08s ease-out;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 12%;
+      left: 50%;
+      width: 2px;
+      height: 34%;
+      margin-left: -1px;
+      border-radius: 1px;
+      background: #ff6b6b;
+      box-shadow: 0 0 5px #ff3b3b;
+    }
+  }
+
+  &:hover .rp-knob-dial,
+  &:focus-visible .rp-knob-dial {
+    border-color: #ff6b6b;
+  }
+}
+
+/* the sidebar version is small and has no text */
+.rp-knob-mini {
+  margin: 0 0.35rem;
+
+  .rp-knob-dial {
+    width: 1.5rem;
+    height: 1.5rem;
+
+    &::before {
+      inset: -5px;
+    }
   }
 }
 
@@ -217,9 +305,9 @@ body:has(.console-window) {
     color: #b45a5a;
   }
 
-  .rp-console-sound-toggle {
-    margin: 0;
+  .rp-knob {
     flex: 0 0 auto;
+    margin-left: 0.4rem;
   }
 
   .rp-console {

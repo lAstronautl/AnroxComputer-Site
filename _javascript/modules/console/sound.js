@@ -6,6 +6,8 @@
  */
 
 const STORAGE_KEY = 'anco-console-sound';
+const VOLUME_KEY = 'anco-console-volume';
+const DEFAULT_VOLUME = 0.8;
 const FADE = 0.4; // seconds the start-up fades into the loop
 const START_GAIN = 0.7;
 const LOOP_GAIN = 0.35;
@@ -29,6 +31,39 @@ export class ConsoleSound {
       // storage blocked: default to on
     }
     this.enabled = stored !== 'off';
+
+    let volume = DEFAULT_VOLUME;
+    try {
+      const saved = parseFloat(localStorage.getItem(VOLUME_KEY));
+      if (Number.isFinite(saved)) volume = Math.min(1, Math.max(0, saved));
+    } catch {
+      // storage blocked: default volume
+    }
+    this.volume = volume;
+    if (volume === 0) this.enabled = false;
+  }
+
+  /** What actually reaches the speakers: the volume knob, or silence when muted. */
+  get level() {
+    return this.enabled ? this.volume : 0;
+  }
+
+  /** Volume knob (0..1). Zero is the same as muted; anything above turns the sound on. */
+  setVolume(value) {
+    this.volume = Math.min(1, Math.max(0, value));
+    this.enabled = this.volume > 0;
+
+    try {
+      localStorage.setItem(VOLUME_KEY, String(this.volume));
+      localStorage.setItem(STORAGE_KEY, this.enabled ? 'on' : 'off');
+    } catch {
+      // ignore
+    }
+
+    if (this.ctx && this.master) {
+      this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.master.gain.setTargetAtTime(this.level, this.ctx.currentTime, 0.03);
+    }
   }
 
   get supported() {
@@ -43,7 +78,7 @@ export class ConsoleSound {
       const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
       this.ctx = new Context();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 1;
+      this.master.gain.value = this.level;
       this.master.connect(this.ctx.destination);
     }
 
@@ -75,7 +110,7 @@ export class ConsoleSound {
       const now = this.ctx.currentTime + 0.05;
       const joinAt = now + Math.max(0, start.duration - FADE);
       this.master.gain.cancelScheduledValues(this.ctx.currentTime);
-      this.master.gain.setValueAtTime(1, this.ctx.currentTime);
+      this.master.gain.setValueAtTime(this.level, this.ctx.currentTime);
 
       const startSource = this.ctx.createBufferSource();
       startSource.buffer = start;
@@ -143,6 +178,7 @@ export class ConsoleSound {
   /** Mute / unmute without touching the start-up sting or the loop (used by the site-wide switch). */
   mute(value) {
     this.enabled = !value;
+    if (!value && this.volume === 0) this.volume = DEFAULT_VOLUME;
     try {
       localStorage.setItem(STORAGE_KEY, value ? 'off' : 'on');
     } catch {
@@ -155,6 +191,7 @@ export class ConsoleSound {
 
   setEnabled(value) {
     this.enabled = value;
+    if (value && this.volume === 0) this.volume = DEFAULT_VOLUME;
     try {
       localStorage.setItem(STORAGE_KEY, value ? 'on' : 'off');
     } catch {
@@ -180,12 +217,12 @@ export class ConsoleSound {
     // everything already playing (the ambient loop) is muffled for a few seconds
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(this.master.gain.value, now);
-    this.master.gain.linearRampToValueAtTime(0.12, now + 0.05);
-    this.master.gain.setValueAtTime(0.12, now + 4.5);
-    this.master.gain.linearRampToValueAtTime(1, now + 7);
+    this.master.gain.linearRampToValueAtTime(this.level * 0.12, now + 0.05);
+    this.master.gain.setValueAtTime(this.level * 0.12, now + 4.5);
+    this.master.gain.linearRampToValueAtTime(this.level, now + 7);
 
     const out = ctx.createGain();
-    out.gain.value = 1;
+    out.gain.value = this.level;
     out.connect(ctx.destination); // bypass the muffled master
 
     // the bang: white noise with a fast decay

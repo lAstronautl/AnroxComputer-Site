@@ -10,7 +10,9 @@ import { ESC, c, crlf, visibleLength } from './ansi';
 import { buildFs } from './storage';
 import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
+import { playMap } from './mapview';
 import { ConsoleSound } from './sound';
+import { createKnob } from './knob';
 import { LOGO, LOGO_SMALL, LOGO_WIDTH } from './logo';
 
 // eslint-disable-next-line no-control-regex
@@ -59,6 +61,7 @@ class Shell {
     this.sound = null;
     this.articlesUrl = '';
     this.homeUrl = '';
+    this.screen = null;
     this.articles = null;
     this.shimmerTimer = 0;
     this.pendingShimmer = null;
@@ -708,12 +711,17 @@ class Shell {
         desc: 'светошумовая граната',
         run: () => this.cmdFlashbang()
       },
+      map: {
+        desc: 'интерактивная карта (map [номер статьи])',
+        auth: true,
+        run: (args) => this.cmdMap(args)
+      },
       site: {
         desc: 'вернуться на сайт',
         run: () => this.cmdSite()
       },
       sound: {
-        desc: 'звук консоли (sound on | off)',
+        desc: 'громкость (sound 0–100, on, off)',
         run: (args) => this.cmdSound(args)
       },
       games: {
@@ -735,6 +743,7 @@ class Shell {
     commands.find = commands.search;
     commands.cls = commands.clear;
     commands.home = commands.site;
+    commands.карта = commands.map;
     commands.сайт = commands.site;
     commands.useradd = commands.adduser;
     commands.unlock = commands.auth;
@@ -757,14 +766,41 @@ class Shell {
     return commands;
   }
 
+  /** The position (level) from which a command is available. */
+  commandLevel(command) {
+    if (command.admin) return this.adminLevel;
+    return command.auth ? 1 : 0;
+  }
+
+  /** Commands grouped by the position that unlocks them, up to the reader's own level. */
   cmdHelp() {
+    const aliases = ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox', 'home'];
     const shown = new Set();
-    this.println(c.bold(c.red('Команды:')));
+    const groups = new Map();
+    // a guest still sees what signing in gives (level 1), but not the management commands
+    const reach = Math.max(this.user?.level ?? 0, 1);
+
     for (const [name, command] of Object.entries(this.commands)) {
-      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox', 'home'].includes(name)) continue;
+      if (shown.has(command) || command.hidden || aliases.includes(name)) continue;
       shown.add(command);
-      this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}${command.auth && !this.user ? c.grey('  [после входа]') : ''}`);
+
+      const level = this.commandLevel(command);
+      if (level > reach) continue;
+      groups.set(level, [...(groups.get(level) ?? []), { name, command }]);
     }
+
+    this.println(c.bold(c.red('Команды по должностям:')));
+    for (const level of [...groups.keys()].sort((a, b) => a - b)) {
+      const locked = level > (this.user?.level ?? 0);
+      const title = level === 0 ? 'ДЛЯ ВСЕХ' : `${this.levelName(level)} (L${level}+)`;
+      this.println('');
+      this.println(`${c.red(`── ${title} `)}${c.grey(locked ? '── после входа' : '')}`);
+      for (const { name, command } of groups.get(level)) {
+        this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}`);
+      }
+    }
+
+    this.println('');
     this.println(c.grey('Tab — дополнить, ↑/↓ — история, Ctrl+C — отмена, Ctrl+L — очистить.'));
   }
 
@@ -1422,7 +1458,7 @@ class Shell {
 
     this.println(c.bold(c.red(`Архив АнКо — статей: ${list.length}`)));
     list.forEach((article, i) => {
-      const where = article.categories ? c.grey(`  [${article.categories}]`) : '';
+      const where = (article.categories ? c.grey(`  [${article.categories}]`) : '') + (article.zones?.length ? c.amber('  [карта]') : '');
       this.println(`  ${c.bright(String(i + 1).padStart(2))}. ${article.title}${where}`);
     });
     this.println(c.grey('read <номер|слово> — прочитать статью.'));
@@ -1450,6 +1486,37 @@ class Shell {
       .join('\n');
   }
 
+  async cmdMap(args) {
+    const list = await this.loadArticles();
+    if (!list) return;
+
+    const withMaps = list.filter((article) => article.zones?.length);
+    if (withMaps.length === 0) {
+      this.println(c.grey('В архиве нет интерактивных карт.'));
+      return;
+    }
+
+    if (args.length > 0) {
+      const article = await this.pickArticle(args, 'map <номер|слово>');
+      if (!article) return;
+      if (!article.zones?.length) {
+        this.println(c.red('У этой статьи нет интерактивной карты.'));
+        return;
+      }
+      await playMap(this, article);
+      return;
+    }
+
+    if (withMaps.length === 1) {
+      await playMap(this, withMaps[0]);
+      return;
+    }
+
+    this.println(c.bold(c.red('Интерактивные карты:')));
+    for (const item of withMaps) this.println(`  ${c.bright(String(list.indexOf(item) + 1).padStart(2))}. ${item.title}`);
+    this.println(c.grey('map <номер> — открыть карту.'));
+  }
+
   async cmdRead(args) {
     const article = await this.pickArticle(args, 'read <номер|слово>');
     if (!article) return;
@@ -1467,7 +1534,8 @@ class Shell {
     this.println(c.red(`── ${article.title} ${'─'.repeat(Math.max(2, 40 - [...article.title].length))}`));
     if (article.categories) this.println(c.grey(`Раздел: ${article.categories}`));
     this.println('');
-    this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: интерактивная карта, схема или изображение)'));
+    if (article.zones?.length) this.println(c.amber(`Интерактивная карта: map ${this.articles.indexOf(article) + 1}`));
+    this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: схема или изображение)'));
     this.println(c.red('─'.repeat(44)));
     this.log({ action: 'article', target: article.title });
   }
@@ -1523,7 +1591,7 @@ class Shell {
   }
 
   cmdSound(args) {
-    const mode = (args[0] ?? '').toLowerCase();
+    const mode = (args[0] ?? '').toLowerCase().replace('%', '');
     if (!this.sound?.supported) {
       this.println(c.grey('Звук недоступен в этом браузере.'));
       return;
@@ -1531,11 +1599,16 @@ class Shell {
 
     if (mode === 'on' || mode === 'вкл') this.sound.setEnabled(true);
     else if (mode === 'off' || mode === 'выкл') this.sound.setEnabled(false);
-    else {
-      this.println(c.grey(`Звук: ${this.sound.enabled ? 'включён' : 'выключен'}. Использование: sound on | sound off`));
+    else if (/^\d{1,3}$/.test(mode)) {
+      this.sound.unlock();
+      this.sound.setVolume(Math.min(100, Number(mode)) / 100);
+      if (this.sound.enabled) void this.sound.start();
+      else this.sound.stop();
+    } else {
+      this.println(c.grey(`Громкость: ${Math.round(this.sound.level * 100)}%. Использование: sound <0–100> | sound on | sound off`));
       return;
     }
-    this.println(c.grey(`Звук ${this.sound.enabled ? 'включён' : 'выключен'}.`));
+    this.println(c.grey(`Громкость: ${Math.round(this.sound.level * 100)}%.`));
   }
 
   cmdGames() {
@@ -1624,6 +1697,7 @@ export async function initConsole() {
   shell.sound = sound;
   shell.articlesUrl = root.dataset.articles ?? '';
   shell.homeUrl = root.dataset.home ?? '';
+  shell.screen = screen;
   const term = new WTerm(screen, {
     cursorBlink: true,
     onData: (input) => shell.handleData(input)
@@ -1640,23 +1714,30 @@ export async function initConsole() {
   root.addEventListener('click', () => term.focus());
 
   // browsers only allow audio after a gesture, so the terminal "powers on" with a click
-  const toggle = document.getElementById('rp-console-sound');
-  const syncToggle = () => {
-    if (!toggle) return;
-    toggle.hidden = !sound.supported;
-    toggle.setAttribute('aria-pressed', String(sound.enabled));
-    toggle.textContent = sound.enabled ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
-  };
-  syncToggle();
-  toggle?.addEventListener('click', () => {
-    sound.setEnabled(!sound.enabled);
-    syncToggle();
-  });
-  const setEnabled = sound.setEnabled.bind(sound);
-  sound.setEnabled = (value) => {
-    setEnabled(value);
-    syncToggle();
-  };
+  const knobHost = document.getElementById('rp-console-sound');
+  const knob = knobHost
+    ? createKnob(knobHost, {
+        value: sound.level,
+        onInput: (value) => {
+          sound.unlock();
+          sound.setVolume(value);
+          if (value > 0) void sound.start();
+          else sound.stop();
+          sound.tick();
+        }
+      })
+    : null;
+  if (knobHost) knobHost.hidden = !sound.supported;
+
+  // the `sound` command and the knob stay in step
+  const syncKnob = () => knob?.set(sound.level);
+  for (const name of ['setEnabled', 'setVolume']) {
+    const original = sound[name].bind(sound);
+    sound[name] = (value) => {
+      original(value);
+      syncKnob();
+    };
+  }
 
   window.addEventListener('pagehide', () => sound.stop());
 

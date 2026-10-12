@@ -2,11 +2,12 @@
  * Terminal effects for the console site theme (data-mode="console"):
  * - a post is "typed" on screen every time it is opened (a click or key press skips the typing)
  * - hovering links, cards and buttons plays a short typing sound
- * Sound is on by default (same switch as the console tab) and waits for the first click or key,
+ * Sound is on by default (same volume knob setting as the console) and waits for the first click or key,
  * because browsers only allow audio after a user gesture.
  */
 
 import { ConsoleSound } from '../console/sound';
+import { createKnob } from '../console/knob';
 
 const TARGETS = 'p, li, h2, h3, h4, h5, h6, blockquote, dt, dd';
 // things that must appear at once: typing inside them would break their layout
@@ -58,31 +59,20 @@ function initHoverSound() {
   });
 }
 
-/* ---------- sound switch in the sidebar ---------- */
+/* ---------- volume knob in the sidebar ---------- */
 
-function initSoundSwitch() {
-  const button = document.getElementById('sound-toggle');
-  if (!button || button.dataset.bound) {
+function initVolumeKnob() {
+  const host = document.getElementById('sound-toggle');
+  if (!host || host.dataset.bound) {
     return;
   }
-  button.dataset.bound = 'true';
+  host.dataset.bound = 'true';
 
-  const paint = () => {
-    const icon = button.querySelector('i');
-    if (icon) {
-      icon.className = sound.enabled ? 'fas fa-volume-high' : 'fas fa-volume-xmark';
-    }
-    const label = sound.enabled ? 'Звук: вкл' : 'Звук: выкл';
-    button.setAttribute('title', label);
-    button.setAttribute('aria-label', label);
-  };
-
-  paint();
-  button.addEventListener('click', () => {
-    sound.mute(sound.enabled);
-    sound.unlock();
-    paint();
-    if (sound.enabled) {
+  createKnob(host, {
+    value: sound.level,
+    onInput: (value) => {
+      sound.unlock();
+      sound.setVolume(value);
       sound.tick();
     }
   });
@@ -255,6 +245,6 @@ export function terminalFx() {
 
   initHoverSound();
   initGlitch();
-  initSoundSwitch();
+  initVolumeKnob();
   typePost();
 }
