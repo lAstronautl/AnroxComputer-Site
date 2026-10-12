@@ -34,6 +34,25 @@ html[data-mode^='console'] {
     border-radius: 2px;
   }
 
+  /* Bootstrap defaults (blue links, grey icons) that the base theme does not recolour */
+  .btn-link,
+  .btn-link:hover {
+    color: var(--link-color);
+  }
+
+  .category-trigger,
+  .page-link {
+    color: var(--text-muted-color) !important;
+  }
+
+  .card,
+  .card-body,
+  .list-group,
+  .list-group-item,
+  .collapse {
+    color: var(--text-color);
+  }
+
   /* thin glowing frame instead of shadows */
   :is(.card, #sidebar, #topbar-wrapper) {
     box-shadow: 0 0 0 1px rgb(var(--console-glow-rgb) / 22%);

@@ -1,7 +1,8 @@
 /*
  * Console themes: the АнКо theme (anco.scss) with the red palette swapped for a parameter map,
  * so one stylesheet gives the red-phosphor and the green-terminal looks.
- * Keys: bg, dim, mid, bright, accent, deep, and dim-rgb (space separated triple for the text glow).
+ * Keys: bg, dim, mid, bright, accent, deep, white (the pale "white"), n1..n6 (tinted greys: surfaces and
+ * borders), and dim-rgb (space separated triple for the text glow).
  */
 @use 'sass:map';
 
@@ -10,8 +11,15 @@ $red: (
   'dim': #d65a5a,
   'mid': #e8504f,
   'bright': #ff6b6b,
-  'accent': #ffb000,
+  'accent': #ff8f8f,
   'deep': #4a0f0f,
+  'white': #ffe3e3,
+  'n1': #1f0d0d,
+  'n2': #3a1414,
+  'n3': #170a0a,
+  'n4': #5a2323,
+  'n5': #0d0505,
+  'n6': #110707,
   'dim-rgb': '214 90 90'
 );
 $green: (
@@ -21,6 +29,13 @@ $green: (
   'bright': #6dffa8,
   'accent': #b8ffcf,
   'deep': #0b3d20,
+  'white': #e3ffee,
+  'n1': #0d1f14,
+  'n2': #143a24,
+  'n3': #0a1710,
+  'n4': #235a38,
+  'n5': #050d08,
+  'n6': #07110a,
   'dim-rgb': '63 191 114'
 );
 
@@ -30,8 +45,8 @@ $green: (
   /* Framework color */
   --main-bg: #{map.get($p, 'bg')};
   --console-glow-rgb: #{map.get($p, 'dim-rgb')};
-  --mask-bg: #1e2124;
-  --main-border-color: #2b2f35;
+  --mask-bg: #{map.get($p, 'n1')};
+  --main-border-color: #{map.get($p, 'n2')};
 
   /* Common color */
   --text-color: #{map.get($p, 'dim')};
@@ -39,7 +54,7 @@ $green: (
   --text-muted-highlight-color: #{map.get($p, 'bright')};
   --heading-color: #{map.get($p, 'bright')};
   --map-tooltip-title-color: #{map.get($p, 'bright')};
-  --map-tooltip-bg: #0d0d0d;
+  --map-tooltip-bg: #{map.get($p, 'n5')};
   --map-zone-hover-fill: #{rgba(map.get($p, 'dim'), 0.18)};
   --map-zone-hover-stroke: #{map.get($p, 'dim')};
   --label-color: #{map.get($p, 'bright')};
@@ -47,72 +62,72 @@ $green: (
   --blockquote-text-color: #{map.get($p, 'dim')};
   --link-color: #{map.get($p, 'accent')};
   --link-underline-color: #{map.get($p, 'bright')};
-  --button-bg: #1e2124;
-  --btn-border-color: #2b2f35;
+  --button-bg: #{map.get($p, 'n1')};
+  --btn-border-color: #{map.get($p, 'n2')};
   --btn-backtotop-color: var(--text-color);
-  --btn-backtotop-border-color: #161718;
-  --card-header-bg: #161718;
-  --checkbox-color: #42464b;
+  --btn-backtotop-border-color: #{map.get($p, 'n3')};
+  --card-header-bg: #{map.get($p, 'n3')};
+  --checkbox-color: #{map.get($p, 'n4')};
   --checkbox-checked-color: var(--link-color);
-  --img-bg: radial-gradient(circle, #111111 0%, #0d0d0d 100%);
+  --img-bg: radial-gradient(circle, #{map.get($p, 'n6')} 0%, #{map.get($p, 'n5')} 100%);
   --shimmer-bg: linear-gradient(
     90deg,
-    rgb(255 255 255 / 0%) 0%,
+    #{rgba(map.get($p, 'white'), 0)} 0%,
     #{rgba(map.get($p, 'accent'), 0.4)} 50%,
-    rgb(255 255 255 / 0%) 100%
+    #{rgba(map.get($p, 'white'), 0)} 100%
   );
 
   /* Sidebar */
-  --site-title-color: #ffffff;
+  --site-title-color: #{map.get($p, 'white')};
   --site-subtitle-color: #{map.get($p, 'accent')};
-  --sidebar-bg: #0d0d0d;
-  --sidebar-border-color: #2b2f35;
+  --sidebar-bg: #{map.get($p, 'n5')};
+  --sidebar-border-color: #{map.get($p, 'n2')};
   --sidebar-muted-color: #{map.get($p, 'accent')};
-  --sidebar-active-color: #ffffff;
+  --sidebar-active-color: #{map.get($p, 'white')};
   --sidebar-hover-bg: #{map.get($p, 'deep')};
-  --sidebar-btn-bg: #2b2f35;
+  --sidebar-btn-bg: #{map.get($p, 'n2')};
   --sidebar-btn-color: #{map.get($p, 'accent')};
-  --avatar-border-color: rgb(255 255 255 / 90%);
+  --avatar-border-color: #{rgba(map.get($p, 'white'), 0.9)};
 
   /* Topbar */
-  --topbar-bg: rgb(17 17 17 / 64%);
+  --topbar-bg: #{rgba(map.get($p, 'n6'), 0.64)};
   --topbar-text-color: var(--text-color);
-  --search-border-color: #2b2f35;
-  --search-icon-color: #42464b;
+  --search-border-color: #{map.get($p, 'n2')};
+  --search-icon-color: #{map.get($p, 'n4')};
   --input-focus-border-color: #{map.get($p, 'accent')};
 
   /* Home page */
   --post-list-text-color: #{map.get($p, 'dim')};
   --btn-patinator-text-color: var(--text-color);
-  --btn-paginator-hover-color: #2b2f35;
+  --btn-paginator-hover-color: #{map.get($p, 'n2')};
 
   /* Posts */
   --toc-highlight: #{map.get($p, 'accent')};
-  --toc-popup-border-color: #2b2f35;
+  --toc-popup-border-color: #{map.get($p, 'n2')};
   --tag-hover: #{map.get($p, 'deep')};
 
   /* Graph */
   --graph-bg: var(--main-bg);
-  --graph-border-color: #2b2f35;
+  --graph-border-color: #{map.get($p, 'n2')};
   --graph-control-color: #{map.get($p, 'accent')};
   --graph-control-hover-bg: #{map.get($p, 'deep')};
-  --graph-settings-bg: #0d0d0d;
+  --graph-settings-bg: #{map.get($p, 'n5')};
   --graph-settings-shadow: rgb(0 0 0 / 45%) 0 8px 30px;
   --graph-node-current: #{map.get($p, 'accent')};
   --graph-node-visited: #{map.get($p, 'bright')};
   --graph-node-default: #{map.get($p, 'dim')};
-  --graph-node-tag: #42464b;
+  --graph-node-tag: #{map.get($p, 'n4')};
   --graph-link-color: #{rgba(map.get($p, 'accent'), 0.28)};
   --graph-link-active-color: #{map.get($p, 'bright')};
-  --graph-label-color: #ffffff;
-  --tb-odd-bg: #1e2124;
-  --tb-even-bg: #161718;
+  --graph-label-color: #{map.get($p, 'white')};
+  --tb-odd-bg: #{map.get($p, 'n1')};
+  --tb-even-bg: #{map.get($p, 'n3')};
   --tb-border-color: var(--tb-odd-bg);
   --footnote-target-bg: #{map.get($p, 'deep')};
-  --btn-share-color: #42464b;
-  --btn-share-hover-color: #ffffff;
-  --card-bg: #0d0d0d;
-  --card-hover-bg: #2b2f35;
+  --btn-share-color: #{map.get($p, 'n4')};
+  --btn-share-hover-color: #{map.get($p, 'white')};
+  --card-bg: #{map.get($p, 'n5')};
+  --card-hover-bg: #{map.get($p, 'n2')};
   --card-shadow:
   transparent  0 6px 18px 0, // #{rgba(map.get($p, 'deep'), 0.72)}
   transparent 0 0 0 1px; // #{rgba(map.get($p, 'deep'), 0.5)}
@@ -120,62 +135,62 @@ $green: (
   --card-hover-shadow:
     #{rgba(map.get($p, 'accent'), 0.72)} 0 7px 19px 0,
     #{rgba(map.get($p, 'accent'), 0.4)} 0 0 0 1px;
-  --kbd-wrap-color: #42464b;
-  --kbd-text-color: #ffffff;
-  --kbd-bg-color: #0d0d0d;
-  --prompt-text-color: rgb(255 255 255 / 75%);
-  --prompt-tip-bg: rgb(13 13 13 / 64%);
+  --kbd-wrap-color: #{map.get($p, 'n4')};
+  --kbd-text-color: #{map.get($p, 'white')};
+  --kbd-bg-color: #{map.get($p, 'n5')};
+  --prompt-text-color: #{rgba(map.get($p, 'white'), 0.75)};
+  --prompt-tip-bg: #{rgba(map.get($p, 'n5'), 0.64)};
   --prompt-tip-icon-color: #{map.get($p, 'accent')};
-  --prompt-info-bg: rgb(43 47 53 / 80%);
-  --prompt-info-icon-color: #ffffff;
+  --prompt-info-bg: #{rgba(map.get($p, 'n2'), 0.8)};
+  --prompt-info-icon-color: #{map.get($p, 'white')};
   --prompt-warning-bg: #{rgba(map.get($p, 'mid'), 0.8)};
   --prompt-warning-icon-color: #{map.get($p, 'accent')};
   --prompt-danger-bg: #{rgba(map.get($p, 'dim'), 0.8)};
-  --prompt-danger-icon-color: #ffffff;
+  --prompt-danger-icon-color: #{map.get($p, 'white')};
 
   /* Tags */
   --tag-border: #{map.get($p, 'dim')};
-  --tag-shadow: #161718;
-  --dash-color: #42464b;
-  --search-tag-bg: #2b2f35;
+  --tag-shadow: #{map.get($p, 'n3')};
+  --dash-color: #{map.get($p, 'n4')};
+  --search-tag-bg: #{map.get($p, 'n2')};
 
   /* Categories */
-  --categories-border: rgb(66 70 75 / 50%);
-  --categories-hover-bg: #2b2f35;
-  --categories-icon-hover-color: #ffffff;
+  --categories-border: #{rgba(map.get($p, 'n4'), 0.5)};
+  --categories-hover-bg: #{map.get($p, 'n2')};
+  --categories-icon-hover-color: #{map.get($p, 'white')};
 
   /* Archive */
   --timeline-node-bg: #{map.get($p, 'accent')};
-  --timeline-color: #42464b;
+  --timeline-color: #{map.get($p, 'n4')};
   --timeline-year-dot-color: var(--timeline-color);
 
   /* Code highlight colors */
-  --language-border-color: #2b2f35;
-  --highlight-bg-color: #0d0d0d;
-  --highlighter-rouge-color: #ffffff;
-  --highlight-lineno-color: #42464b;
-  --inline-code-bg: rgb(13 13 13 / 20%);
-  --code-color: #ffffff;
+  --language-border-color: #{map.get($p, 'n2')};
+  --highlight-bg-color: #{map.get($p, 'n5')};
+  --highlighter-rouge-color: #{map.get($p, 'white')};
+  --highlight-lineno-color: #{map.get($p, 'n4')};
+  --inline-code-bg: #{rgba(map.get($p, 'n5'), 0.2)};
+  --code-color: #{map.get($p, 'white')};
   --code-header-text-color: #{map.get($p, 'accent')};
-  --code-header-muted-color: #2b2f35;
-  --code-header-icon-color: #42464b;
+  --code-header-muted-color: #{map.get($p, 'n2')};
+  --code-header-icon-color: #{map.get($p, 'n4')};
   --clipboard-checked-color: #{map.get($p, 'accent')};
-  --filepath-text-color: #ffffff;
+  --filepath-text-color: #{map.get($p, 'white')};
 
   .light {
     display: none;
   }
 
   details {
-    background: #0d0d0d;
-    border: 1px solid #2b2f35;
+    background: #{map.get($p, 'n5')};
+    border: 1px solid #{map.get($p, 'n2')};
     border-radius: 10px;
     margin: 12px 0;
     overflow: hidden;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 
     &:hover {
-      border-color: #42464b;
+      border-color: #{map.get($p, 'n4')};
       box-shadow: 0 0 0 1px #{rgba(map.get($p, 'dim'), 0.15)};
     }
 
@@ -189,18 +204,18 @@ $green: (
     list-style: none;
     cursor: pointer;
     padding: 12px 14px;
-    background: linear-gradient(90deg, #161718, #0d0d0d);
+    background: linear-gradient(90deg, #{map.get($p, 'n3')}, #{map.get($p, 'n5')});
     color: #{map.get($p, 'accent')};
     font-weight: 600;
-    border-bottom: 1px solid #1e2124;
+    border-bottom: 1px solid #{map.get($p, 'n1')};
     display: flex;
     align-items: center;
     justify-content: space-between;
     transition: background 0.2s ease, color 0.2s ease;
 
     &:hover {
-      background: linear-gradient(90deg, #1e2124, #161718);
-      color: #ffffff;
+      background: linear-gradient(90deg, #{map.get($p, 'n1')}, #{map.get($p, 'n3')});
+      color: #{map.get($p, 'white')};
     }
 
     &:focus {
@@ -224,8 +239,8 @@ $green: (
   details > *:not(summary) {
     padding: 12px 14px;
     color: #{map.get($p, 'dim')};
-    background: #0d0d0d;
-    border-top: 1px solid #1e2124;
+    background: #{map.get($p, 'n5')};
+    border-top: 1px solid #{map.get($p, 'n1')};
   }
 
   /* текст внутри (если используется markdown/wordpress blocks) */
@@ -260,11 +275,11 @@ $green: (
   #archives li:nth-child(odd) {
     background-image: linear-gradient(
       to left,
-      #111111,
-      #1e2124,
-      #1e2124,
-      #1e2124,
-      #111111
+      #{map.get($p, 'n6')},
+      #{map.get($p, 'n1')},
+      #{map.get($p, 'n1')},
+      #{map.get($p, 'n1')},
+      #{map.get($p, 'n6')}
     );
   }
 
@@ -275,7 +290,7 @@ $green: (
   /* --- Syntax highlight --- */
 
   .highlight .gp {
-    color: #42464b;
+    color: #{map.get($p, 'n4')};
   }
 
   .highlight table td {
@@ -288,12 +303,12 @@ $green: (
 
   .highlight,
   .highlight .w {
-    color: #ffffff;
-    background-color: #0d0d0d;
+    color: #{map.get($p, 'white')};
+    background-color: #{map.get($p, 'n5')};
   }
 
   .highlight .err {
-    color: #ffffff;
+    color: #{map.get($p, 'white')};
     background-color: #{map.get($p, 'dim')};
   }
 
@@ -321,7 +336,7 @@ $green: (
   .highlight .ow,
   .highlight .p,
   .highlight .pi {
-    color: #ffffff;
+    color: #{map.get($p, 'white')};
   }
 
   .highlight .gi {
@@ -329,7 +344,7 @@ $green: (
   }
 
   .highlight .gd {
-    color: #ffffff;
+    color: #{map.get($p, 'white')};
     background-color: #{map.get($p, 'deep')};
   }
 
@@ -357,7 +372,7 @@ $green: (
   .highlight .sh,
   .highlight .sx,
   .highlight .s1 {
-    color: #ffffff;
+    color: #{map.get($p, 'white')};
   }
 
   .highlight .sr {
@@ -378,6 +393,6 @@ $green: (
   .highlight .mo,
   .highlight .mx,
   .highlight .ss {
-    color: #ffffff;
+    color: #{map.get($p, 'white')};
   }
 }
