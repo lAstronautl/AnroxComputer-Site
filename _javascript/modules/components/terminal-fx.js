@@ -161,13 +161,26 @@ function typePost() {
       part.hidden.remove();
     }
     caret.remove();
-    for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+    for (const type of ['click', 'keydown']) {
       window.removeEventListener(type, finish);
     }
   };
 
   const step = () => {
     if (finished) {
+      return;
+    }
+
+    // text the reader has already scrolled past is shown at once, so typing carries on where they are looking
+    while (index < parts.length && parts[index].hidden.getBoundingClientRect().bottom < -40) {
+      const passed = parts[index];
+      passed.shown.nodeValue = passed.full;
+      passed.hidden.textContent = '';
+      index += 1;
+      offset = 0;
+    }
+    if (index >= parts.length) {
+      finish();
       return;
     }
 
@@ -202,7 +215,8 @@ function typePost() {
 
   ready();
   requestAnimationFrame(() => {
-    for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+    // a tap or key press skips the typing; scrolling (touch swipes included) does not
+    for (const type of ['click', 'keydown']) {
       window.addEventListener(type, finish, { passive: true });
     }
     requestAnimationFrame(step);
