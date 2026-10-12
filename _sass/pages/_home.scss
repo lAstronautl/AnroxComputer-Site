@@ -276,7 +276,7 @@ html:not([data-view='list']) #post-list {
       content: '';
       position: absolute;
       inset: 0.45rem;
-      border: 2px solid transparent;
+      border: 1px solid transparent;
       pointer-events: none;
     }
 
@@ -332,8 +332,8 @@ html:not([data-view='list']) #post-list {
     &[class*='inner-']::after {
       content: '';
       position: absolute;
-      width: calc(0.45rem + 2px);
-      height: calc(0.45rem + 2px);
+      width: calc(0.45rem + 1px);
+      height: calc(0.45rem + 1px);
       border: 0 solid var(--heading-color);
       pointer-events: none;
     }
@@ -341,28 +341,28 @@ html:not([data-view='list']) #post-list {
     &.inner-tl::after {
       top: 0;
       left: 0;
-      border-width: 0 2px 2px 0;
+      border-width: 0 1px 1px 0;
       border-bottom-right-radius: 0.5rem;
     }
 
     &.inner-tr::after {
       top: 0;
       right: 0;
-      border-width: 0 0 2px 2px;
+      border-width: 0 0 1px 1px;
       border-bottom-left-radius: 0.5rem;
     }
 
     &.inner-bl::after {
       bottom: 0;
       left: 0;
-      border-width: 2px 2px 0 0;
+      border-width: 1px 1px 0 0;
       border-top-right-radius: 0.5rem;
     }
 
     &.inner-br::after {
       bottom: 0;
       right: 0;
-      border-width: 2px 0 0 2px;
+      border-width: 1px 0 0 1px;
       border-top-left-radius: 0.5rem;
     }
   }
@@ -371,14 +371,14 @@ html:not([data-view='list']) #post-list {
   .tile-group-label {
     position: absolute;
     left: 1.6rem;
-    bottom: -0.25rem;
+    bottom: -0.2rem;
     z-index: 1;
     display: block;
     padding: 0 0.6rem;
     background: var(--main-bg);
     color: var(--heading-color);
-    font-size: 0.85rem;
-    line-height: 1.6rem;
+    font-size: 0.72rem;
+    line-height: 1.3rem;
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
@@ -445,7 +445,7 @@ html:not([data-view='list']) #post-list {
 
       .card-title {
         margin: 0 0 0.3rem !important;
-        font-size: 1rem;
+        font-size: 0.9rem;
         line-height: 1.25;
         white-space: normal;
         display: -webkit-box;
@@ -454,7 +454,7 @@ html:not([data-view='list']) #post-list {
         overflow: hidden;
 
         @include bp.md {
-          font-size: 1.1rem;
+          font-size: 0.98rem;
         }
       }
 
@@ -464,7 +464,7 @@ html:not([data-view='list']) #post-list {
       }
 
       .post-meta {
-        font-size: 0.78rem;
+        font-size: 0.7rem;
       }
     }
   }
