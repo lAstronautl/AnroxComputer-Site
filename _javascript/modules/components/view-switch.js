@@ -32,6 +32,7 @@ export function viewSwitch() {
         // storage blocked: the choice just will not persist
       }
       paint();
+      document.dispatchEvent(new Event('anco-view-change'));
     });
   }
 

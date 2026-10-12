@@ -6,6 +6,7 @@ export { initLocaleDatetime } from './components/locale-datetime';
 export { initToc } from './components/toc';
 export { loadMermaid } from './components/mermaid';
 export { modeWatcher } from './components/mode-toggle';
+export { tileFrames } from './components/tile-frames';
 export { viewSwitch } from './components/view-switch';
 export { bootScreen } from './components/boot-screen';
 export { terminalFx } from './components/terminal-fx';

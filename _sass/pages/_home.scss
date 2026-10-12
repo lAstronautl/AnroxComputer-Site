@@ -236,7 +236,8 @@
 
 /* Tiles: a grid of squares-ish cards, big picture on top, title below */
 
-/* posts are grouped by category: each group is a framed block with the category name on its bottom edge */
+/* Posts are grouped by category and the groups flow one after another in a single grid; the frame of each
+   group is drawn by tile-frames.js as an outline around its cells (edge-* / corner-* classes) */
 #post-list .tile-group-label {
   display: none;
 }
@@ -246,8 +247,7 @@ html[data-view='list'] #post-list {
   flex-direction: column;
   gap: 1.25rem;
 
-  .tile-group,
-  .tile-group-grid {
+  .tile-cell {
     display: contents;
   }
 
@@ -257,25 +257,60 @@ html[data-view='list'] #post-list {
 }
 
 html:not([data-view='list']) #post-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2.4rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+  gap: 0;
+  align-items: stretch;
 
-  .tile-group {
+  @include bp.md {
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  }
+
+  .tile-cell {
     position: relative;
-    padding: 0.8rem 0.8rem 1.4rem;
-    border: 2px solid var(--heading-color);
-    border-radius: 0.7rem;
+    display: flex;
+    padding: 0.5rem;
+    border: 2px solid transparent;
 
-    @include bp.md {
-      padding: 1rem 1rem 1.6rem;
+    &.edge-t {
+      border-top-color: var(--heading-color);
+    }
+
+    &.edge-b {
+      border-bottom-color: var(--heading-color);
+    }
+
+    &.edge-l {
+      border-left-color: var(--heading-color);
+    }
+
+    &.edge-r {
+      border-right-color: var(--heading-color);
+    }
+
+    &.corner-tl {
+      border-top-left-radius: 0.7rem;
+    }
+
+    &.corner-tr {
+      border-top-right-radius: 0.7rem;
+    }
+
+    &.corner-bl {
+      border-bottom-left-radius: 0.7rem;
+    }
+
+    &.corner-br {
+      border-bottom-right-radius: 0.7rem;
     }
   }
 
+  /* the category name sits on the bottom edge of the frame, at its left */
   .tile-group-label {
     position: absolute;
     left: 1rem;
-    bottom: -0.8rem;
+    bottom: -0.85rem;
+    z-index: 1;
     display: block;
     padding: 0 0.6rem;
     background: var(--main-bg);
@@ -283,28 +318,17 @@ html:not([data-view='list']) #post-list {
     font-size: 0.85rem;
     line-height: 1.6rem;
     letter-spacing: 0.04em;
+    white-space: nowrap;
   }
 
-  /* a wrapping row: tiles grow to share each row, so the last row fills the frame instead of leaving empty slots */
-  .tile-group-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-
-    @include bp.md {
-      gap: 1rem;
-    }
+  .tile-cell > .card-wrapper {
+    width: 100%;
   }
 
   .card-wrapper {
     display: flex;
-    flex: 1 1 9.5rem;
     min-width: 0;
     margin: 0 !important;
-
-    @include bp.md {
-      flex-basis: 11.5rem;
-    }
 
     &:not(:last-child) {
       margin-bottom: 0 !important;

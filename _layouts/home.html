@@ -61,9 +61,8 @@ layout: default
 
 <div id="post-list" class="flex-grow-1 px-xl-1">
   {% for tile_group in tile_groups %}
-  <section class="tile-group">
-    <div class="tile-group-grid">
   {% for post in tile_group.items %}
+    <div class="tile-cell" data-category="{{ tile_group.name }}">
     <article class="card-wrapper card">
       <a href="{{ post.url | relative_url }}" class="post-preview row g-0 flex-md-row-reverse">
         {% assign card_body_col = '12' %}
@@ -143,10 +142,8 @@ layout: default
         </div>
       </a>
     </article>
-  {% endfor %}
     </div>
-    {% if tile_group.name != '' %}<span class="tile-group-label">{{ tile_group.name }}</span>{% endif %}
-  </section>
+  {% endfor %}
   {% endfor %}
 </div>
 <!-- #post-list -->
