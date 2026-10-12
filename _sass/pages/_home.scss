@@ -235,15 +235,66 @@
 }
 
 /* Tiles: a grid of squares-ish cards, big picture on top, title below */
-html:not([data-view='list']) #post-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
-  gap: 0.75rem;
-  align-items: stretch;
 
-  @include bp.md {
-    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-    gap: 1rem;
+/* posts are grouped by category: each group is a framed block with the category name on its bottom edge */
+#post-list .tile-group-label {
+  display: none;
+}
+
+html[data-view='list'] #post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  .tile-group,
+  .tile-group-grid {
+    display: contents;
+  }
+
+  .card-wrapper {
+    margin-bottom: 0 !important;
+  }
+}
+
+html:not([data-view='list']) #post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2.4rem;
+
+  .tile-group {
+    position: relative;
+    padding: 0.8rem 0.8rem 1.4rem;
+    border: 2px solid var(--heading-color);
+    border-radius: 0.7rem;
+
+    @include bp.md {
+      padding: 1rem 1rem 1.6rem;
+    }
+  }
+
+  .tile-group-label {
+    position: absolute;
+    left: 1rem;
+    bottom: -0.8rem;
+    display: block;
+    padding: 0 0.6rem;
+    background: var(--main-bg);
+    color: var(--heading-color);
+    font-size: 0.85rem;
+    line-height: 1.6rem;
+    letter-spacing: 0.04em;
+  }
+
+  .tile-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+    gap: 0.75rem;
+    align-items: stretch;
+
+    @include bp.md {
+      grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+      gap: 1rem;
+    }
   }
 
   .card-wrapper {

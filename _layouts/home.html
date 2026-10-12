@@ -57,8 +57,13 @@ layout: default
   <button type="button" class="view-switch-btn" data-view="list" aria-pressed="false"><i class="fas fa-list"></i> Список</button>
 </div>
 
+{% assign tile_groups = posts | group_by_exp: 'item', 'item.categories | first' %}
+
 <div id="post-list" class="flex-grow-1 px-xl-1">
-  {% for post in posts %}
+  {% for tile_group in tile_groups %}
+  <section class="tile-group">
+    <div class="tile-group-grid">
+  {% for post in tile_group.items %}
     <article class="card-wrapper card">
       <a href="{{ post.url | relative_url }}" class="post-preview row g-0 flex-md-row-reverse">
         {% assign card_body_col = '12' %}
@@ -138,6 +143,10 @@ layout: default
         </div>
       </a>
     </article>
+  {% endfor %}
+    </div>
+    {% if tile_group.name != '' %}<span class="tile-group-label">{{ tile_group.name }}</span>{% endif %}
+  </section>
   {% endfor %}
 </div>
 <!-- #post-list -->
