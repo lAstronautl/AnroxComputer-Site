@@ -464,8 +464,13 @@ html:not([data-view='list']) #post-list {
         display: none !important;
       }
 
+      /* the category is already written on the frame around the group */
       .post-meta {
         font-size: 0.7rem;
+
+        .me-auto {
+          display: none;
+        }
       }
     }
   }
