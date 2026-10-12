@@ -102,6 +102,26 @@ export class ConsoleSound {
     }
   }
 
+  /** Plays just the start-up sting (no loop), e.g. for the site boot screen. */
+  async sting() {
+    if (!this.enabled || !this.supported || !this.ctx || this.ctx.state !== 'running' || !this.startUrl) return;
+
+    try {
+      const response = await fetch(this.startUrl);
+      if (!response.ok) throw new Error(String(response.status));
+      const buffer = await this.ctx.decodeAudioData(await response.arrayBuffer());
+
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = START_GAIN;
+      source.connect(gain).connect(this.master);
+      source.start();
+    } catch (error) {
+      console.warn('Start-up sound unavailable:', error);
+    }
+  }
+
   stop() {
     if (!this.ctx || !this.playing) return;
 

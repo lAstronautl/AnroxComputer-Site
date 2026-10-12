@@ -29,10 +29,6 @@ html {
     &[data-mode='console-red'] {
       @include console.styles(console.$red);
     }
-
-    &[data-mode='console-green'] {
-      @include console.styles(console.$green);
-    }
   }
 
   @media (prefers-color-scheme: dark) {
@@ -51,10 +47,6 @@ html {
 
     &[data-mode='console-red'] {
       @include console.styles(console.$red);
-    }
-
-    &[data-mode='console-green'] {
-      @include console.styles(console.$green);
     }
   }
 

@@ -1,6 +1,6 @@
 /*
  * Console themes: the АнКо theme (anco.scss) with the red palette swapped for a parameter map,
- * so one stylesheet gives the red-phosphor and the green-terminal looks.
+ * so the same stylesheet can be re-coloured by passing another map.
  * Keys: bg, dim, mid, bright, accent, deep, white (the pale "white"), n1..n6 (tinted greys: surfaces and
  * borders), and dim-rgb (space separated triple for the text glow).
  */
@@ -21,22 +21,6 @@ $red: (
   'n5': #0d0505,
   'n6': #110707,
   'dim-rgb': '214 90 90'
-);
-$green: (
-  'bg': #010a04,
-  'dim': #3fbf72,
-  'mid': #35d97a,
-  'bright': #6dffa8,
-  'accent': #b8ffcf,
-  'deep': #0b3d20,
-  'white': #e3ffee,
-  'n1': #0d1f14,
-  'n2': #143a24,
-  'n3': #0a1710,
-  'n4': #235a38,
-  'n5': #050d08,
-  'n6': #07110a,
-  'dim-rgb': '63 191 114'
 );
 
 @mixin styles($p) {

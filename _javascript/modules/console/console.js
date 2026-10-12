@@ -11,6 +11,7 @@ import { buildFs } from './storage';
 import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
 import { ConsoleSound } from './sound';
+import { LOGO, LOGO_SMALL, LOGO_WIDTH } from './logo';
 
 // eslint-disable-next-line no-control-regex
 const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|\x1b|[\s\S]/gu;
@@ -37,18 +38,7 @@ const PUMP_MS = 16;
 const FAST_AFTER = 700; // long dumps speed up so a big file never takes more than a few seconds
 const UNITS = /\x1b\[[0-9;?]*[A-Za-z~]|\x1b[\s\S]|[\s\S]/gu; // eslint-disable-line no-control-regex
 
-const LOGO = [
-  ' █████╗ ███╗   ██╗██████╗  ██████╗ ██╗  ██╗     ██████╗ ███████╗',
-  '██╔══██╗████╗  ██║██╔══██╗██╔═══██╗╚██╗██╔╝    ██╔═══██╗██╔════╝',
-  '███████║██╔██╗ ██║██████╔╝██║   ██║ ╚███╔╝     ██║   ██║███████╗',
-  '██╔══██║██║╚██╗██║██╔══██╗██║   ██║ ██╔██╗     ██║   ██║╚════██║',
-  '██║  ██║██║ ╚████║██║  ██║╚██████╔╝██╔╝ ██╗    ╚██████╔╝███████║',
-  '╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚══════╝'
-];
 
-// the banner is 66 columns wide; narrower terminals (phones) get a plain title
-const LOGO_WIDTH = 66;
-const LOGO_SMALL = ['ANROX OS'];
 
 class Shell {
   constructor(data) {

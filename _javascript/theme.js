@@ -7,6 +7,8 @@ class Theme {
   static #modeKey = 'mode';
   static #modeAttr = 'data-mode';
   static #themeKey = 'anco-theme';
+  static #splashKey = 'anco-splash';
+  static #bootDoneKey = 'anco-boot-done';
   static #darkMedia = window.matchMedia('(prefers-color-scheme: dark)');
   static switchable = !document.documentElement.hasAttribute(this.#modeAttr);
 
@@ -26,20 +28,15 @@ class Theme {
     return 'console-red';
   }
 
-  static get CONSOLE_GREEN() {
-    return 'console-green';
-  }
-
   /** Themes the site owner fixes in `theme_mode`; the sidebar button cycles through these (all dark). */
   static get THEMES() {
-    return [this.ANCO, this.CONSOLE_RED, this.CONSOLE_GREEN];
+    return [this.ANCO, this.CONSOLE_RED];
   }
 
   static get THEME_NAMES() {
     return {
       [this.ANCO]: 'АнКо',
-      [this.CONSOLE_RED]: 'Консоль — красная',
-      [this.CONSOLE_GREEN]: 'Консоль — зелёная'
+      [this.CONSOLE_RED]: 'Консоль'
     };
   }
 
@@ -108,8 +105,7 @@ class Theme {
       [this.LIGHT]: light,
       [this.DARK]: dark,
       [this.ANCO]: dark,
-      [this.CONSOLE_RED]: dark,
-      [this.CONSOLE_GREEN]: dark
+      [this.CONSOLE_RED]: dark
     };
   }
 
@@ -157,22 +153,73 @@ class Theme {
     if (saved && this.THEMES.includes(saved)) {
       document.documentElement.setAttribute(this.#modeAttr, saved);
     }
+
+    this.#prepareBoot(saved);
   }
 
   /**
-   * Switches to the next site theme (АнКо → red console → green console) and remembers it
+   * Decides, before the page is painted, whether the full-screen boot overlay is needed:
+   * - first visit (no theme remembered yet): the theme picker (`boot-choose`)
+   * - the console theme was chosen and the splash was not switched off: the boot screen (`boot-run`),
+   *   once per browser session
    */
-  static cycleTheme() {
-    const next = this.THEMES[(this.THEMES.indexOf(this.current) + 1) % this.THEMES.length];
-    document.documentElement.setAttribute(this.#modeAttr, next);
+  static #prepareBoot(saved) {
+    let splash;
+    let done;
 
     try {
-      localStorage.setItem(this.#themeKey, next);
+      localStorage.setItem('anco-probe', '1');
+      localStorage.removeItem('anco-probe');
+      splash = localStorage.getItem(this.#splashKey);
+      done = sessionStorage.getItem(this.#bootDoneKey);
+    } catch {
+      return; // storage is blocked: a choice could not be remembered, so never interrupt the page
+    }
+
+    const root = document.documentElement;
+    if (!saved || !this.THEMES.includes(saved)) {
+      root.classList.add('boot-choose');
+    } else if (saved === this.CONSOLE_RED && splash !== 'off' && !done) {
+      root.classList.add('boot-run');
+    }
+  }
+
+  /**
+   * Applies and remembers a site theme. `manual` marks a switch made with the sidebar button,
+   * after which the boot screen no longer plays on entry.
+   */
+  static setTheme(theme, { manual = false } = {}) {
+    document.documentElement.setAttribute(this.#modeAttr, theme);
+
+    try {
+      localStorage.setItem(this.#themeKey, theme);
+      if (manual) {
+        localStorage.setItem(this.#splashKey, 'off');
+      } else {
+        localStorage.removeItem(this.#splashKey);
+      }
     } catch {
       // storage blocked: the choice just will not persist
     }
 
     this.#notify();
+  }
+
+  /** Marks the boot screen as shown for this browser session. */
+  static markBootDone() {
+    try {
+      sessionStorage.setItem(this.#bootDoneKey, '1');
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Switches to the next site theme (АнКо ↔ console) and remembers it
+   */
+  static cycleTheme() {
+    const next = this.THEMES[(this.THEMES.indexOf(this.current) + 1) % this.THEMES.length];
+    this.setTheme(next, { manual: true });
     return next;
   }
 

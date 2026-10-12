@@ -1,0 +1,26 @@
+{%- comment -%}
+  Full-screen overlay used by the console look: the first-visit theme picker and the boot screen.
+  It stays hidden unless theme.js puts `boot-choose` / `boot-run` on <html> (see _javascript/theme.js);
+  the logic lives in _javascript/modules/components/boot-screen.js.
+{%- endcomment -%}
+{% if site.theme_mode %}
+  {%- assign boot = site.data.console -%}
+  <div
+    id="boot-overlay"
+    data-title="{{ boot.title | escape }}"
+    data-version="{{ boot.version | escape }}"
+    data-subtitle="{{ boot.subtitle | escape }}"
+    data-checks="{{ boot.boot_checks | jsonify | escape }}"
+    data-sound="{{ '/assets/audio/console-start.mp3' | relative_url }}"
+  >
+    <div id="boot-choose" role="dialog" aria-label="Выбор оформления сайта">
+      <p class="boot-heading">ANROX OS // ВЫБОР ИНТЕРФЕЙСА</p>
+      <p class="boot-hint">Тему можно сменить позже кнопкой с палитрой в меню слева.</p>
+      <div class="boot-options">
+        <button type="button" data-theme="anco"><b>1 — АнКо</b><span>обычный тёмный сайт</span></button>
+        <button type="button" data-theme="console-red"><b>2 — Консоль</b><span>терминал: загрузка, печать текста, звук</span></button>
+      </div>
+    </div>
+    <div id="boot-screen" aria-hidden="true"></div>
+  </div>
+{% endif %}
