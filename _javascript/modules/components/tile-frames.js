@@ -49,10 +49,30 @@ export function tileFrames() {
     const sameGroup = (item, row, col) => grid.get(`${row},${col}`)?.cell.dataset.category === item.cell.dataset.category;
 
     for (const item of place) {
-      const open = new Set();
+      item.open = new Set();
       for (const [side, dRow, dCol] of SIDES) {
-        if (!sameGroup(item, item.row + dRow, item.col + dCol)) open.add(side);
+        if (!sameGroup(item, item.row + dRow, item.col + dCol)) item.open.add(side);
       }
+    }
+
+    // a group that runs off the end of a row and goes on at the start of the next one, without touching
+    // itself from above, is drawn as one wrapped band: the frame stays open at the break
+    const lastCol = cols.length - 1;
+    for (const item of place) {
+      const next = grid.get(`${item.row + 1},0`);
+      if (item.col !== lastCol || !next || next.cell.dataset.category !== item.cell.dataset.category) continue;
+      const touching = place.some(
+        (other) =>
+          other.cell.dataset.category === item.cell.dataset.category && other.row === item.row && sameGroup(item, other.row + 1, other.col)
+      );
+      const following = place.indexOf(next) === place.indexOf(item) + 1;
+      if (touching || !following) continue;
+      item.open.delete('r');
+      next.open.delete('l');
+    }
+
+    for (const item of place) {
+      const open = item.open;
       for (const side of open) item.cell.classList.add(`edge-${side}`);
       for (const [a, b] of [
         ['t', 'l'],
