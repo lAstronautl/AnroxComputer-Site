@@ -215,6 +215,13 @@ function crashPoint(rng = randomFloat) {
 
 const crashMultiplier = (elapsedMs) => Math.floor(Math.exp((CRASH_RATE * elapsedMs) / 1000) * 100) / 100;
 
+// общий «Взлёт»: один раунд на всех — кто-то запускает раунд, минута на ставки, полёт, показ итога, затем снова можно запускать
+const CRASH_BET_WINDOW_MS = 60000; // минута на ставки после запуска раунда
+const CRASH_RESULT_MS = 7000;
+
+// с какого момента полёта раунд считается рухнувшим (с запасом на пинг)
+const crashDurationMs = (crash) => Math.ceil((Math.log(crash) / CRASH_RATE) * 1000) + CRASH_GRACE_MS + 50;
+
 /**
  * API ролевой консоли АнКо (Cloudflare Worker + база D1).
  * Хранит сотрудников, сессии и журнал обращений. Пароли хешируются здесь (PBKDF2),
@@ -499,7 +506,10 @@ async function ensureEconomy(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, name TEXT NOT NULL, asset TEXT NOT NULL, side TEXT NOT NULL, qty INTEGER NOT NULL, price REAL NOT NULL, pct REAL NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS market_edits (asset TEXT PRIMARY KEY, base REAL, vol REAL, hidden INTEGER NOT NULL DEFAULT 0)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS custom_assets (id TEXT PRIMARY KEY, name TEXT NOT NULL, grp TEXT NOT NULL, kind TEXT NOT NULL, base REAL NOT NULL, vol REAL NOT NULL)'),
-    env.DB.prepare('CREATE TABLE IF NOT EXISTS rounds (user_key TEXT PRIMARY KEY, bet INTEGER NOT NULL, crash REAL NOT NULL, started INTEGER NOT NULL)')
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS crash_rounds (id INTEGER PRIMARY KEY AUTOINCREMENT, bet_until INTEGER NOT NULL, start INTEGER NOT NULL, crash REAL NOT NULL)'),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS crash_bets (id INTEGER PRIMARY KEY AUTOINCREMENT, round INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, bet INTEGER NOT NULL, cashed REAL, payout INTEGER NOT NULL DEFAULT 0, UNIQUE (round, user_key))'
+    )
   ]);
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS demand_asset ON demand (asset, t)').run();
   economyReady = true;
@@ -534,13 +544,62 @@ function betOf(body) {
   return bet;
 }
 
+/** The shared "Взлёт" round: a player launches it, everybody has a minute to bet, then it flies. */
+async function latestCrash(env) {
+  await ensureEconomy(env);
+  return env.DB.prepare('SELECT id, bet_until, start, crash FROM crash_rounds ORDER BY id DESC LIMIT 1').first();
+}
+
+const crashOver = (round, now) => now >= round.start + crashDurationMs(round.crash) + CRASH_RESULT_MS;
+
+function crashPhase(round, now) {
+  if (!round || crashOver(round, now)) return 'idle';
+  if (now < round.start) return 'betting';
+  const low = crashMultiplier(Math.max(0, now - round.start - CRASH_GRACE_MS));
+  return low >= round.crash ? 'crashed' : 'flying';
+}
+
+async function crashState(env, row, now) {
+  const round = await latestCrash(env);
+  const phase = crashPhase(round, now);
+  const live = phase !== 'idle';
+  const { results: bets } = live
+    ? await env.DB.prepare('SELECT name, user_key, bet, cashed, payout FROM crash_bets WHERE round = ? ORDER BY id').bind(round.id).all()
+    : { results: [] };
+  // the finished rounds, newest first (the round that just ended counts once its result is gone)
+  const { results: past } = await env.DB.prepare('SELECT crash FROM crash_rounds WHERE id < ? ORDER BY id DESC LIMIT 14')
+    .bind(live ? round.id : (round?.id ?? 0) + 1)
+    .all();
+  return {
+    round: round?.id ?? 0,
+    phase,
+    now,
+    start: round?.start ?? 0,
+    betUntil: round?.bet_until ?? 0,
+    window: CRASH_BET_WINDOW_MS,
+    ...(phase === 'crashed' ? { at: round.crash } : {}),
+    // the top level sees where the plane will fall
+    ...(live && row.level >= MARKET_ADMIN_LEVEL ? { peek: round.crash } : {}),
+    history: past.map((item) => item.crash),
+    bets: bets.map((item) => ({ name: item.name, bet: item.bet, cashed: item.cashed, payout: item.payout, me: item.user_key === row.key })),
+    balance: await balanceOf(env, row.key)
+  };
+}
+
+async function placeCrashBet(env, row, round, bet) {
+  const placed = await env.DB.prepare('SELECT 1 AS x FROM crash_bets WHERE round = ? AND user_key = ?').bind(round.id, row.key).first();
+  if (placed) throw new ApiError(409, 'placed');
+  await takeMoney(env, row.key, bet);
+  await env.DB.prepare('INSERT INTO crash_bets (round, user_key, name, bet) VALUES (?, ?, ?, ?)').bind(round.id, row.key, row.name, bet).run();
+}
+
 async function wipeEconomy(env, key) {
   try {
     await ensureEconomy(env);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM wallets WHERE user_key = ?').bind(key),
       env.DB.prepare('DELETE FROM holdings WHERE user_key = ?').bind(key),
-      env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(key)
+      env.DB.prepare('DELETE FROM crash_bets WHERE user_key = ?').bind(key)
     ]);
   } catch {
     // the economy was never used
@@ -799,40 +858,62 @@ async function economyRoute(path, method, request, env, row) {
     return { ...roll, mode: body.mode, target, bet, payout, balance: await balanceOf(env, row.key) };
   }
 
-  if (game === 'crash/start') {
-    const bet = betOf(body);
+  if (game === 'crash/state') return crashState(env, row, now);
+
+  if (game === 'crash/launch') {
+    // anybody may start a round when none is running; the launcher's own bet is optional
+    const last = await latestCrash(env);
+    if (crashPhase(last, now) !== 'idle') throw new ApiError(409, 'running');
+    const bet = body.bet == null ? 0 : betOf(body);
     await balanceOf(env, row.key);
-    await takeMoney(env, row.key, bet); // an abandoned earlier round simply stays lost
-    await env.DB.prepare('INSERT OR REPLACE INTO rounds (user_key, bet, crash, started) VALUES (?, ?, ?, ?)').bind(row.key, bet, crashPoint(), now).run();
-    return { started: now, bet, balance: await balanceOf(env, row.key) };
+    if (bet) await takeMoney(env, row.key, bet);
+    const betUntil = now + CRASH_BET_WINDOW_MS;
+    // only one of several simultaneous launches starts the round
+    const started = await env.DB.prepare('INSERT INTO crash_rounds (bet_until, start, crash) SELECT ?, ?, ? WHERE COALESCE((SELECT MAX(id) FROM crash_rounds), 0) = ?')
+      .bind(betUntil, betUntil, crashPoint(), last?.id ?? 0)
+      .run();
+    if (!started.meta.changes) {
+      await giveMoney(env, row.key, bet);
+      throw new ApiError(409, 'running');
+    }
+    const round = await latestCrash(env);
+    if (bet) await env.DB.prepare('INSERT INTO crash_bets (round, user_key, name, bet) VALUES (?, ?, ?, ?)').bind(round.id, row.key, row.name, bet).run();
+    await env.DB.prepare('DELETE FROM crash_rounds WHERE id < ?').bind(round.id - 60).run();
+    await env.DB.prepare('DELETE FROM crash_bets WHERE round < ?').bind(round.id - 60).run();
+    return crashState(env, row, now);
   }
 
-  if (game === 'crash/status' || game === 'crash/cashout') {
-    await ensureEconomy(env);
-    const round = await env.DB.prepare('SELECT bet, crash, started FROM rounds WHERE user_key = ?').bind(row.key).first();
-    if (!round) throw new ApiError(409, 'no-round');
+  if (game === 'crash/bet') {
+    const bet = betOf(body);
+    const round = await latestCrash(env);
+    if (crashPhase(round, now) !== 'betting') throw new ApiError(409, 'closed');
+    await balanceOf(env, row.key);
+    await placeCrashBet(env, row, round, bet);
+    return crashState(env, row, now);
+  }
 
-    // the plane counts as crashed only once the network delay allowance has passed too,
-    // so a press that left the player's screen before the crash is not lost to ping
-    const elapsed = now - round.started;
-    const high = crashMultiplier(elapsed);
-    const low = crashMultiplier(Math.max(0, elapsed - CRASH_GRACE_MS));
-    if (low >= round.crash) {
-      await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
-      return { crashed: true, at: round.crash, bet: round.bet, balance: await balanceOf(env, row.key) };
-    }
-    if (game === 'crash/status') return { alive: true };
+  if (game === 'crash/cashout') {
+    const round = await latestCrash(env);
+    if (!round) throw new ApiError(409, 'no-round');
+    const mine = await env.DB.prepare('SELECT bet, cashed FROM crash_bets WHERE round = ? AND user_key = ?').bind(round.id, row.key).first();
+    if (!mine || mine.cashed != null) throw new ApiError(409, 'no-round');
+    const phase = crashPhase(round, now);
+    if (phase === 'betting') throw new ApiError(409, 'closed');
+    if (phase === 'idle') throw new ApiError(409, 'no-round');
+    if (phase === 'crashed') return { crashed: true, at: round.crash, ...(await crashState(env, row, now)) };
 
     // the player reports the multiplier on their screen; it may only lie between "a moment ago" and "now"
+    const elapsed = now - round.start;
+    const high = crashMultiplier(elapsed);
+    const low = crashMultiplier(Math.max(0, elapsed - CRASH_GRACE_MS));
     const claimed = Number(body.at);
     const asked = Number.isFinite(claimed) ? claimed : low;
     const multiplier = Math.max(1, Math.min(Math.max(low, Math.min(asked, high)), Math.floor((round.crash - 0.01) * 100) / 100));
-
-    const taken = await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
-    if (!taken.meta.changes) throw new ApiError(409, 'no-round');
-    const payout = Math.floor(round.bet * multiplier);
+    const payout = Math.floor(mine.bet * multiplier);
+    const done = await env.DB.prepare('UPDATE crash_bets SET cashed = ?, payout = ? WHERE round = ? AND user_key = ? AND cashed IS NULL').bind(multiplier, payout, round.id, row.key).run();
+    if (!done.meta.changes) throw new ApiError(409, 'no-round');
     await giveMoney(env, row.key, payout);
-    return { won: true, multiplier, bet: round.bet, payout, crashAt: round.crash, balance: await balanceOf(env, row.key) };
+    return { won: true, multiplier, payout, ...(await crashState(env, row, now)) };
   }
 
   throw new ApiError(404, 'not-found');

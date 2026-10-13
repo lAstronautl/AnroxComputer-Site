@@ -208,3 +208,10 @@ export function crashPoint(rng = randomFloat) {
 }
 
 export const crashMultiplier = (elapsedMs) => Math.floor(Math.exp((CRASH_RATE * elapsedMs) / 1000) * 100) / 100;
+
+// общий «Взлёт»: один раунд на всех — кто-то запускает раунд, минута на ставки, полёт, показ итога, затем снова можно запускать
+export const CRASH_BET_WINDOW_MS = 60000; // минута на ставки после запуска раунда
+export const CRASH_RESULT_MS = 7000;
+
+// с какого момента полёта раунд считается рухнувшим (с запасом на пинг)
+export const crashDurationMs = (crash) => Math.ceil((Math.log(crash) / CRASH_RATE) * 1000) + CRASH_GRACE_MS + 50;

@@ -4,7 +4,7 @@
  */
 
 import { c, visibleLength } from './ansi';
-import { KEY, UNIT, bigText, barChart, box, center, errorText, isBack, isEnter, money, openScreen, pad, signed, sgr, tooSmall } from './tui';
+import { KEY, UNIT, at, bigText, clip, fmt, barChart, box, center, errorText, isBack, isEnter, money, openScreen, pad, signed, sgr, tooSmall } from './tui';
 
 const BETS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
 const CRASH_RATE = 0.09; // same growth as the server's (worker/src/economy.js)
@@ -94,6 +94,7 @@ export function playCasino(shell) {
       clearTimers();
       ctx.busy = false;
       ctx.scene = SCENES[name]();
+      ctx.scene.begin?.();
       repaint();
     }
 
@@ -144,7 +145,7 @@ export function playCasino(shell) {
         { id: 'slots', title: 'СЛОТЫ', text: 'Три барабана. Пара — ×1.6, три семёрки — ×100.', tag: '♣ ★ 7' },
         { id: 'roulette', title: 'РУЛЕТКА', text: 'Европейская, один ноль. Цвет ×2, число ×36.', tag: '● ● 0' },
         { id: 'dice', title: 'КОСТИ', text: 'Меньше или больше — шанс и выплата на ваш выбор.', tag: '⚀ ⚃ ⚅' },
-        { id: 'crash', title: 'ВЗЛЁТ', text: 'Множитель растёт — заберите выигрыш до обвала.', tag: '▁▃▅█' }
+        { id: 'crash', title: 'ВЗЛЁТ', text: 'Общий раунд: ставят все вместе, множитель растёт — успейте забрать.', tag: '▁▃▅█' }
       ];
       const roomy = rows >= 34;
       const cardWidth = Math.min(cols - 4, 66);
@@ -516,125 +517,189 @@ export function playCasino(shell) {
       }
     }
 
-    /* ---------- crash ("Взлёт") ---------- */
+    /* ---------- crash ("Взлёт"): one round for everybody ---------- */
 
     function crash() {
-      let phase = 'idle'; // idle | flying | over
-      let startedAt = 0;
-      let outcome = null; // { won, multiplier, payout } or { crashed, at }
-      let error = '';
-      let last = 1;
-      const multiplierAt = (ms) => Math.floor(Math.exp((CRASH_RATE * ms) / 1000) * 100) / 100;
+      let state = null; // the latest answer of the server
+      let offset = 0; // server clock minus ours
+      let message = '';
+      let busy = false;
+      const multiplierAt = (ms) => Math.floor(Math.exp((CRASH_RATE * Math.max(0, ms)) / 1000) * 100) / 100;
+      const serverNow = () => Date.now() + offset;
       const axis = 7;
-      const chartWidth = cols - axis - 4;
-      const chartHeight = Math.max(5, rows - 19);
+      const panel = cols >= 100 ? 40 : 0;
+      const chartWidth = cols - axis - 4 - (panel ? panel + 2 : 0);
+      const chartHeight = Math.max(5, rows - (panel ? 20 : 27));
 
-      return {
-        draw() {
-          const lines = header('взлёт');
-          const now = phase === 'flying' ? multiplierAt(Date.now() - startedAt) : phase === 'over' ? (outcome.crashed ? outcome.at : outcome.multiplier) : 1;
-          last = now;
-          const tone = outcome?.crashed ? c.red : outcome?.won ? c.green : now >= 5 ? c.red : now >= 2 ? c.amber : c.green;
-          const big = bigText(`×${now.toFixed(2)}`, tone);
-          lines.push('');
-          big.forEach((row) => lines.push(center(row, cols)));
-
-          // curve: the multiplier at every time slice, drawn up to "now"
-          const elapsed = phase === 'flying' ? Date.now() - startedAt : Math.log(Math.max(1.0001, now)) / CRASH_RATE * 1000;
-          const span = Math.max(12000, elapsed * 1.15);
-          const peak = Math.max(2, now * 1.25);
-          const samples = [];
-          for (let i = 0; i < chartWidth; i += 1) {
-            const t = (i / chartWidth) * span;
-            samples.push(t <= elapsed ? multiplierAt(t) : null);
-          }
-          const toneCode = outcome?.crashed ? '31' : outcome?.won ? '32' : now >= 5 ? '31' : now >= 2 ? '33' : '32';
-          const chart = barChart(samples, chartWidth, chartHeight, { min: 1, max: peak, tone: phase === 'idle' ? '90' : toneCode });
-          chart.forEach((line, index) => {
-            const label = index === 0 ? `×${peak.toFixed(1)}` : index === chart.length - 1 ? '×1.0' : '';
-            lines.push(`${c.grey(pad(label, axis, 'right'))} ${c.red('│')}${line}`);
-          });
-          lines.push(`${' '.repeat(axis)} ${c.red('└' + '─'.repeat(chartWidth + 1))}`);
-
-          if (phase === 'flying') {
-            lines.push(center(`${c.grey('ставка')} ${money(bet())}   ${c.grey('заберёте')} ${c.bold(c.green(money(Math.floor(bet() * now))))}`, cols));
-            lines.push(center(c.bold(c.amber('ENTER / ПРОБЕЛ — ЗАБРАТЬ')), cols));
-          } else if (phase === 'over') {
-            if (outcome.crashed) lines.push(center(c.bold(c.red(`✹ ВЗЛЁТ РУХНУЛ НА ×${outcome.at.toFixed(2)} — ставка ${money(bet())} потеряна`)), cols));
-            else lines.push(center(c.bold(c.green(`▲ ЗАБРАЛИ ×${outcome.multiplier.toFixed(2)} → +${money(outcome.payout - outcome.bet)}`)) + c.grey(`  (рухнул бы на ×${outcome.crashAt.toFixed(2)})`), cols));
-            lines.push(center(error ? errorLine(error) : c.grey('Enter — ещё раз'), cols));
-          } else {
-            lines.push(center(betLine(), cols));
-            lines.push(center(error ? errorLine(error) : c.grey('Enter — старт'), cols));
-          }
-          while (lines.length < rows - 1) lines.push('');
-          lines.push(...footer(phase === 'flying' ? 'Enter / пробел — забрать выигрыш' : '←→ ставка · Enter — старт · Esc — в лобби'));
-          return lines;
-        },
-        key(key) {
-          if (phase === 'flying') {
-            if (isEnter(key) || key === ' ') void cashOut();
-            return;
-          }
-          if (ctx.busy) return;
-          if (isBack(key)) go('lobby');
-          else if (changeBet(key)) repaint();
-          else if (isEnter(key) || key === ' ') void start();
+      const take = (answer) => {
+        if (answer?.bets) {
+          state = answer;
+          offset = answer.now - Date.now();
         }
       };
 
-      async function start() {
-        ctx.busy = true;
-        error = '';
-        const answer = await api('crash/start', { bet: bet() });
-        if (answer.error) {
-          error = answer.error;
-          ctx.busy = false;
-          repaint();
-          return;
+      async function poll() {
+        if (busy) return;
+        const answer = await api('crash/state');
+        if (answer.error) message = errorText(answer.error);
+        else take(answer);
+      }
+
+      const mine = () => state?.bets.find((item) => item.me);
+      const tone = (m) => (m >= 5 ? c.red : m >= 2 ? c.amber : c.green);
+
+      function betsTable(limit) {
+        const lines = [c.bold(c.red('СТАВКИ ИГРОКОВ')) + c.grey(`  ${state.bets.length}`), c.grey(pad('ИГРОК', 11) + pad('СТАВКА', 8, 'right') + '  ИТОГ')];
+        const sorted = [...state.bets].sort((a, b) => b.bet - a.bet);
+        for (const item of sorted.slice(0, limit)) {
+          let result;
+          if (item.cashed != null) result = c.green(`×${item.cashed.toFixed(2)} ${signed(item.payout - item.bet)}`);
+          else if (state.phase === 'crashed') result = c.red(`✹ −${fmt(item.bet)}`);
+          else result = c.amber('летит…');
+          const name = item.me ? c.bold(c.bright(pad(clip(item.name, 10), 11))) : pad(clip(item.name, 10), 11);
+          lines.push(`${name}${pad(fmt(item.bet), 8, 'right')}  ${result}`);
         }
-        ctx.busy = false;
-        phase = 'flying';
-        outcome = null;
-        startedAt = Date.now();
-        let polling = false;
-        const stopLoop = every(120, () => {
-          if (phase !== 'flying') {
-            stopLoop();
+        if (!sorted.length) lines.push(c.grey('пока никто не поставил'));
+        const total = state.bets.reduce((sum, item) => sum + item.bet, 0);
+        if (sorted.length > limit) lines.push(c.grey(`…и ещё ${sorted.length - limit}`));
+        lines.push(c.grey(`на кону ${money(total)}`));
+        return lines;
+      }
+
+      return {
+        begin: () => start(),
+        draw() {
+          const lines = header('взлёт');
+          if (!state) return [...lines, '', c.grey('  Подключение к раунду…')];
+
+          const now = serverNow();
+          const elapsed = now - state.start;
+          const phase = state.phase;
+          let shown = 1;
+          if (phase === 'flying') shown = multiplierAt(elapsed);
+          else if (phase === 'crashed') shown = state.at;
+          const colour = phase === 'crashed' ? c.red : tone(shown);
+
+          lines.push('');
+          bigText(`×${shown.toFixed(2)}`, colour).forEach((row) => lines.push(center(row, cols - (panel ? panel + 2 : 0))));
+
+          // status line under the big number
+          let status;
+          if (phase === 'idle') {
+            status = `${c.bold(c.amber('РАУНД НЕ ЗАПУЩЕН'))}${c.grey('  ·  запустите — у всех будет минута на ставки')}`;
+          } else if (phase === 'betting') {
+            const left = Math.max(0, Math.ceil((state.betUntil - now) / 1000));
+            const filled = Math.max(0, Math.min(20, Math.round((left / (state.window / 1000)) * 20)));
+            const bar = '█'.repeat(filled) + '░'.repeat(20 - filled);
+            status = `${c.bold(c.amber('ПРИЁМ СТАВОК'))} ${c.amber(bar)} ${c.bold(c.bright(`${left} с`))}`;
+          } else if (phase === 'flying') {
+            status = c.bold(c.green('▲ ВЗЛЁТ…')) + c.grey('  множитель растёт, пока не рухнет');
+          } else {
+            const next = Math.max(0, Math.ceil((state.start + Math.ceil((Math.log(state.at) / CRASH_RATE) * 1000) + 450 + 7000 - now) / 1000));
+            status = `${c.bold(c.red(`✹ РУХНУЛ НА ×${state.at.toFixed(2)}`))}${c.grey(`  ·  новый раунд можно запустить через ${next} с`)}`;
+          }
+          lines.push(center(status, cols - (panel ? panel + 2 : 0)));
+          if (state.peek != null) lines.push(center(c.amber(`⌖ вы видите обвал заранее: ×${state.peek.toFixed(2)}`) + c.grey('  (только уровень 999)'), cols - (panel ? panel + 2 : 0)));
+
+          // chart: the curve up to now
+          const flown = phase === 'flying' ? elapsed : phase === 'crashed' ? (Math.log(state.at) / CRASH_RATE) * 1000 : 0;
+          const span = Math.max(12000, flown * 1.15);
+          const peak = Math.max(2, shown * 1.25);
+          const samples = [];
+          for (let i = 0; i < chartWidth; i += 1) {
+            const t = (i / chartWidth) * span;
+            samples.push(t <= flown ? multiplierAt(t) : null);
+          }
+          const code = phase === 'betting' ? '90' : phase === 'crashed' ? '31' : shown >= 5 ? '31' : shown >= 2 ? '33' : '32';
+          const chart = barChart(samples, chartWidth, chartHeight, { min: 1, max: peak, tone: code });
+          const body = [];
+          chart.forEach((line, index) => {
+            const label = index === 0 ? `×${peak.toFixed(1)}` : index === chart.length - 1 ? '×1.0' : '';
+            body.push(`${c.grey(pad(label, axis, 'right'))} ${c.red('│')}${line}`);
+          });
+          body.push(`${' '.repeat(axis)} ${c.red('└' + '─'.repeat(chartWidth + 1))}`);
+
+          // recent crash points
+          const chips = state.history.map((value) => (value >= 5 ? c.green : value >= 2 ? c.amber : c.red)(`×${value.toFixed(2)}`)).join(' ');
+          body.push(` ${c.grey('прошлые:')} ${chips || c.grey('—')}`);
+
+          // my bet and the controls
+          const my = mine();
+          let hint;
+          if (phase === 'idle') hint = `${betLine()}  ${c.bold(c.amber('Enter — запустить раунд со ставкой'))}`;
+          else if (phase === 'betting') hint = my ? c.green(`Ваша ставка принята: ${money(my.bet)}`) : `${betLine()}  ${c.grey('Enter — поставить')}`;
+          else if (phase === 'flying') hint = my && my.cashed == null ? `${c.bold(c.amber('ENTER / ПРОБЕЛ — ЗАБРАТЬ'))} ${c.grey('≈')} ${c.bold(c.green(money(Math.floor(my.bet * shown))))}` : my ? c.green(`Вы забрали ×${my.cashed.toFixed(2)}`) : c.grey('Вы наблюдаете: ставки принимаются перед стартом');
+          else hint = my ? (my.cashed != null ? c.bold(c.green(`Вы забрали ×${my.cashed.toFixed(2)} → ${signed(my.payout - my.bet)} ${UNIT}`)) : c.bold(c.red(`Ставка ${money(my.bet)} сгорела`))) : c.grey('Вы не участвовали');
+          body.push(` ${message ? c.red(message) : hint}`);
+
+          if (panel) {
+            const side = betsTable(Math.max(3, body.length - 4));
+            body.forEach((line, i) => {
+              if (side[i] !== undefined) body[i] = `${line}${at(lines.length + i + 1, cols - panel)}${side[i]}`;
+            });
+            lines.push(...body);
+          } else {
+            lines.push(...body, ...betsTable(Math.max(2, rows - lines.length - body.length - 3)));
+          }
+          while (lines.length < rows - 1) lines.push('');
+          lines.push(...footer(phase === 'flying' ? 'Enter / пробел — забрать выигрыш · Esc — в лобби' : '←→ ставка · Enter — поставить / запустить · Esc — в лобби'));
+          return lines;
+        },
+        key(key) {
+          if (isBack(key)) {
+            go('lobby');
             return;
           }
-          repaint();
-        });
-        // the server tells when the round has crashed; the picture runs on the local clock in between
-        every(250, async () => {
-          if (phase !== 'flying' || polling) return;
-          polling = true;
-          const status = await api('crash/status');
-          polling = false;
-          if (phase !== 'flying') return;
-          if (status.crashed) {
-            phase = 'over';
-            outcome = { crashed: true, at: status.at, bet: status.bet };
+          if (!state || busy) return;
+          const my = mine();
+          if ((state.phase === 'betting' || state.phase === 'idle') && changeBet(key)) {
             repaint();
-          } else if (status.error === 'no-round') {
-            phase = 'over';
-            outcome = { crashed: true, at: last, bet: bet() };
-            repaint();
+          } else if (isEnter(key) || key === ' ') {
+            if (state.phase === 'idle') void launch();
+            else if (state.phase === 'betting' && !my) void place();
+            else if (state.phase === 'flying' && my && my.cashed == null) void cashOut();
           }
-        });
+        }
+      };
+
+      async function launch() {
+        busy = true;
+        message = '';
+        const answer = await api('crash/launch', { bet: bet() });
+        busy = false;
+        if (answer.error) message = errorText(answer.error);
+        else take(answer);
+        repaint();
+      }
+
+      async function place() {
+        busy = true;
+        message = '';
+        const answer = await api('crash/bet', { bet: bet() });
+        busy = false;
+        if (answer.error) message = errorText(answer.error);
+        else take(answer);
+        repaint();
       }
 
       async function cashOut() {
-        const answer = await api('crash/cashout', { at: Math.floor(multiplierAt(Date.now() - startedAt) * 100) / 100 });
-        if (phase !== 'flying') return;
-        phase = 'over';
-        if (answer.won) outcome = { won: true, multiplier: answer.multiplier, payout: answer.payout, bet: answer.bet, crashAt: answer.crashAt };
-        else if (answer.crashed) outcome = { crashed: true, at: answer.at, bet: answer.bet };
-        else {
-          error = answer.error;
-          outcome = { crashed: true, at: last, bet: bet() };
-        }
+        busy = true;
+        message = '';
+        const shownNow = Math.floor(multiplierAt(serverNow() - state.start) * 100) / 100;
+        const answer = await api('crash/cashout', { at: shownNow });
+        busy = false;
+        if (answer.error) message = errorText(answer.error);
+        else take(answer);
         repaint();
+      }
+
+      function start() {
+        void poll().then(repaint);
+        every(350, async () => {
+          await poll();
+          repaint();
+        });
+        every(120, repaint);
       }
     }
 
