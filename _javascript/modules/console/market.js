@@ -179,6 +179,7 @@ export function playMarket(shell) {
     let timer = 0;
     let clock = 0;
     let fetchedAt = 0;
+    let stale = false; // the server runs an older Worker than this page
 
     const view = openScreen(shell, onKey);
     const { cols } = view;
@@ -287,7 +288,7 @@ export function playMarket(shell) {
         const max = order.side === 'buy' ? Math.floor(data.balance / (asset.price * (1 + data.fee))) : held.qty;
         lines.push(c.grey(` цифры — количество · M — максимум (${fmt(max)}) · Enter — подтвердить · Esc — отмена`));
       } else {
-        lines.push(` ${note}`);
+        lines.push(stale ? ` ${c.bold(c.red('Сервер биржи устарел:'))} ${c.amber('вставьте свежий worker/bundle/worker.js в Cloudflare и нажмите Deploy')}` : ` ${note}`);
         lines.push(c.grey(compact ? ' ↑↓ · B куп. · S прод. · H история · Esc' : ` ↑↓ выбор · B купить · S продать${panelWidth ? '' : ' · H история сделок'}${data.editor ? ' · E править рынок' : ''} · Esc выход`));
       }
       return lines;
@@ -306,6 +307,9 @@ export function playMarket(shell) {
         note = c.red(errorText(result.error));
       } else {
         data = result;
+        // an old Worker does not know the new companies and demand: say so instead of drawing "undefined"
+        data.assets = data.assets.map((asset) => ({ ...asset, group: asset.group ?? 'Биржа', demand: asset.demand ?? 0 }));
+        stale = !data.assets.some((asset) => asset.id === 'MGLX');
         fetchedAt = Date.now();
         if (result.refunded) note = c.amber(`Компании, снятые с биржи, выкуплены по цене покупки: +${money(result.refunded)}`);
         else if (note === c.grey('Загрузка котировок…')) note = c.grey('Цены обновляются каждые несколько секунд.');
