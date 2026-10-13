@@ -5,10 +5,14 @@
  */
 
 import { ESC, c, visibleLength } from './ansi';
-import { KEY, UNIT, barChart, box, clip, errorText, fmt, isBack, isEnter, money, openScreen, pad, percent, quote, signed, spark, tooSmall, toneOf } from './tui';
+import { KEY, UNIT, barChart, sgr, box, clip, errorText, fmt, isBack, isEnter, money, openScreen, pad, percent, quote, signed, spark, tooSmall, toneOf } from './tui';
 
 const POLL_MS = 2500;
 const CHART_HINTS = 3;
+
+// every corporation has its own colour, so the companies of one group are easy to tell apart
+const GROUP_TONES = { Anrox: '33', MiliGalax: '36', StarDust: '35', Subea: '94' };
+const groupTone = (group) => GROUP_TONES[group] ?? '37';
 
 /* ---------- wallet ---------- */
 
@@ -81,7 +85,7 @@ export async function claimDole(shell) {
 
 export function playMarket(shell) {
   return new Promise((resolve) => {
-    if (tooSmall(shell, 36, 20)) {
+    if (tooSmall(shell, 36, 28)) {
       shell.println(c.red('Окно слишком маленькое для биржи.') + c.grey(' Увеличьте его или сверните панели.'));
       resolve();
       return;
@@ -99,6 +103,7 @@ export function playMarket(shell) {
     const view = openScreen(shell, onKey);
     const { cols } = view;
     const compact = cols < 64;
+    const roomy = view.rows >= 46; // room for thin lines between the corporations
 
     const heldOf = (id) => data?.holdings.find((item) => item.asset === id) ?? { qty: 0, cost: 0 };
 
@@ -127,19 +132,20 @@ export function playMarket(shell) {
       lines.push(
         compact
           ? c.grey(` ${pad('', 2)}${pad('ТИКЕР', 6)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 8, 'right')}  ТРЕНД        ПОРТФ.`)
-          : c.grey(`   ${pad('ТИКЕР', 6)}${pad('АКТИВ', 19)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 9, 'right')}   ТРЕНД          ПОРТФЕЛЬ`)
+          : c.grey(`   ${pad('ТИКЕР', 6)}${pad('АКТИВ', 22)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 9, 'right')}   ТРЕНД          ПОРТФЕЛЬ`)
       );
       data.assets.forEach((asset, index) => {
+        if (roomy && index > 0 && asset.group !== data.assets[index - 1].group) lines.push(c.grey(` ${'┄'.repeat(width - 2)}`));
         const first = asset.history[0];
         const change = ((asset.price - first) / first) * 100;
         const held = heldOf(asset.id);
         const mark = index === selected ? c.bold(c.red('►')) : ' ';
-        const ticker = index === selected ? c.bold(c.bright(pad(asset.id, 6))) : c.amber(pad(asset.id, 6));
+        const ticker = index === selected ? c.bold(c.bright(pad(asset.id, 6))) : sgr(groupTone(asset.group), pad(asset.id, 6));
         const trend = spark(asset.history, compact ? 8 : 14);
         const position = held.qty ? `${c.bright(String(held.qty))}${c.grey(' шт')}` : c.grey('—');
         const row = compact
           ? ` ${mark} ${ticker}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 8, 'right'))}  ${trend}  ${position}`
-          : ` ${mark} ${ticker}${pad(index === selected ? c.bright(asset.name) : asset.name, 19)}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 9, 'right'))}   ${trend}   ${position}`;
+          : ` ${mark} ${ticker}${pad(index === selected ? c.bright(asset.name) : asset.name, 22)}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 9, 'right'))}   ${trend}   ${position}`;
         lines.push(row);
       });
 
@@ -149,7 +155,7 @@ export function playMarket(shell) {
       const high = Math.max(...asset.history);
       const low = Math.min(...asset.history);
       lines.push(c.red('─'.repeat(width)));
-      lines.push(` ${c.bold(c.bright(asset.id))} ${c.grey('·')} ${asset.name} ${c.grey(`(${asset.kind})`)}   ${c.grey('макс')} ${quote(high)}  ${c.grey('мин')} ${quote(low)}`);
+      lines.push(` ${c.bold(sgr(groupTone(asset.group), asset.id))} ${c.grey('·')} ${asset.name} ${c.grey(`(${asset.group} · ${asset.kind})`)}   ${c.grey('макс')} ${quote(high)}  ${c.grey('мин')} ${quote(low)}`);
       if (held.qty) {
         const value = Math.floor(asset.price * held.qty);
         lines.push(` ${c.grey('позиция')} ${held.qty} шт · ${c.grey('вложено')} ${money(held.cost)} · ${c.grey('сейчас')} ${money(value)} · ${toneOf(value - held.cost)(signed(value - held.cost) + ' ' + UNIT)}`);
@@ -195,7 +201,8 @@ export function playMarket(shell) {
       } else {
         data = result;
         fetchedAt = Date.now();
-        if (note === c.grey('Загрузка котировок…')) note = c.grey('Цены обновляются каждые несколько секунд.');
+        if (result.refunded) note = c.amber(`Компании, снятые с биржи, выкуплены по цене покупки: +${money(result.refunded)}`);
+        else if (note === c.grey('Загрузка котировок…')) note = c.grey('Цены обновляются каждые несколько секунд.');
       }
       paint();
     }

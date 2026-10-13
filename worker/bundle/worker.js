@@ -17,14 +17,22 @@ const DOLE_COOLDOWN = 10 * 60 * 1000;
 const CRASH_RATE = 0.09; // рост множителя «Взлёта» в секунду (экспонента)
 const CRASH_GRACE_MS = 400; // запас на задержку сети: нажатие «Забрать» засчитывается, если успело до обвала с учётом пинга
 
+// group — корпорация-владелец: компании одной корпорации движутся отчасти вместе
 // vol — размах колебаний, noise — «шум» отдельных тиков
 const ASSETS = [
-  { id: 'ANRX', name: 'AnroxComputers', kind: 'акции', base: 120, vol: 0.2, noise: 0.012 },
-  { id: 'DKB', name: 'ДКБ Оборона', kind: 'акции', base: 85, vol: 0.26, noise: 0.015 },
-  { id: 'AME', name: 'АМЕ-Роботикс', kind: 'акции', base: 60, vol: 0.34, noise: 0.02 },
-  { id: 'GEOD', name: 'Геод', kind: 'ресурс', base: 40, vol: 0.42, noise: 0.025 },
-  { id: 'REDM', name: 'Красный минерал', kind: 'ресурс', base: 210, vol: 0.5, noise: 0.03 },
-  { id: 'END', name: 'ЕндКоин', kind: 'крипто', base: 15, vol: 0.75, noise: 0.05 }
+  { id: 'ANRX', name: 'AnroxComputers', group: 'Anrox', kind: 'акции', base: 120, vol: 0.2, noise: 0.012 },
+  { id: 'AIB', name: 'Anrox InterCorp Bank', group: 'Anrox', kind: 'банк', base: 95, vol: 0.16, noise: 0.01 },
+  { id: 'GNG', name: 'Girls&Guns', group: 'Anrox', kind: 'акции', base: 70, vol: 0.38, noise: 0.022 },
+  { id: 'ENDI', name: 'EndiCoin', group: 'Anrox', kind: 'крипто', base: 15, vol: 0.75, noise: 0.05 },
+  { id: 'MGLX', name: 'MiliGalax', group: 'MiliGalax', kind: 'акции', base: 150, vol: 0.24, noise: 0.014 },
+  { id: 'GWPN', name: 'Galax Weapons', group: 'MiliGalax', kind: 'оружие', base: 80, vol: 0.3, noise: 0.018 },
+  { id: 'GAUT', name: 'Galax Automatics', group: 'MiliGalax', kind: 'автоматика', base: 55, vol: 0.34, noise: 0.02 },
+  { id: 'STDU', name: 'StarDust', group: 'StarDust', kind: 'акции', base: 110, vol: 0.22, noise: 0.013 },
+  { id: 'SMIN', name: 'Star Minerals', group: 'StarDust', kind: 'ресурс', base: 40, vol: 0.45, noise: 0.028 },
+  { id: 'SARD', name: 'Star Ardon', group: 'StarDust', kind: 'ресурс', base: 210, vol: 0.55, noise: 0.032 },
+  { id: 'SUBE', name: 'Subea', group: 'Subea', kind: 'акции', base: 130, vol: 0.2, noise: 0.012 },
+  { id: 'SIMP', name: 'Subea Implanters', group: 'Subea', kind: 'импланты', base: 65, vol: 0.36, noise: 0.022 },
+  { id: 'SPHA', name: 'Subea Pharmaceutics', group: 'Subea', kind: 'фарма', base: 90, vol: 0.28, noise: 0.017 }
 ];
 
 /* ---------- цены ---------- */
@@ -54,13 +62,18 @@ function smoothNoise(salt, tick, scale) {
   return mix(salt, i) * (1 - t) + mix(salt, i + 1) * t - 0.5;
 }
 
+function waves(salt, tick) {
+  const phase = (n) => mix(salt, 1000 + n) * Math.PI * 2;
+  return 0.55 * Math.sin(tick / 42 + phase(1)) + 0.3 * Math.sin(tick / 11.5 + phase(2)) + 0.15 * Math.sin(tick / 3.4 + phase(3));
+}
+
 function priceAt(asset, tick, seed = '') {
   const salt = saltOf(`${seed}:${asset.id}`);
-  const phase = (n) => mix(salt, 1000 + n) * Math.PI * 2;
-  const waves =
-    0.55 * Math.sin(tick / 42 + phase(1)) + 0.3 * Math.sin(tick / 11.5 + phase(2)) + 0.15 * Math.sin(tick / 3.4 + phase(3));
+  const groupSalt = saltOf(`${seed}:group:${asset.group ?? asset.id}`);
+  // half of the swing is shared with the corporation's other companies, half is the company's own
+  const swing = 0.5 * waves(groupSalt, tick) + 0.5 * waves(salt, tick);
   const noise = smoothNoise(salt, tick, 6) * 0.5 + smoothNoise(salt ^ 0x5bd1e995, tick, 1.7) * 0.5;
-  const price = asset.base * Math.exp(asset.vol * waves + asset.noise * 4 * noise);
+  const price = asset.base * Math.exp(asset.vol * swing * 1.15 + asset.noise * 4 * noise);
   return Math.max(1, Math.round(price * 100) / 100);
 }
 
@@ -75,7 +88,7 @@ function snapshot(now, seed) {
     assets: ASSETS.map((asset) => {
       const history = [];
       for (let k = tick - HISTORY_TICKS + 1; k <= tick; k += 1) history.push(priceAt(asset, k, seed));
-      return { id: asset.id, name: asset.name, kind: asset.kind, price: history[history.length - 1], history };
+      return { id: asset.id, name: asset.name, group: asset.group, kind: asset.kind, price: history[history.length - 1], history };
     })
   };
 }
@@ -491,8 +504,23 @@ async function wipeEconomy(env, key) {
   }
 }
 
+// a company that left the exchange is bought back at the price the player paid for it
+async function refundRetired(env, key) {
+  const held = await holdingsOf(env, key);
+  const gone = held.filter((item) => !ASSETS.some((asset) => asset.id === item.asset));
+  if (!gone.length) return 0;
+  const refund = gone.reduce((sum, item) => sum + item.cost, 0);
+  await env.DB.prepare(`DELETE FROM holdings WHERE user_key = ? AND asset IN (${gone.map(() => '?').join(',')})`)
+    .bind(key, ...gone.map((item) => item.asset))
+    .run();
+  await giveMoney(env, key, refund);
+  return refund;
+}
+
 async function economyState(env, key) {
-  return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key) };
+  await balanceOf(env, key);
+  const refunded = await refundRetired(env, key);
+  return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key), ...(refunded ? { refunded } : {}) };
 }
 
 async function economyRoute(path, method, request, env, row) {

@@ -344,8 +344,23 @@ async function wipeEconomy(env, key) {
   }
 }
 
+// a company that left the exchange is bought back at the price the player paid for it
+async function refundRetired(env, key) {
+  const held = await holdingsOf(env, key);
+  const gone = held.filter((item) => !ASSETS.some((asset) => asset.id === item.asset));
+  if (!gone.length) return 0;
+  const refund = gone.reduce((sum, item) => sum + item.cost, 0);
+  await env.DB.prepare(`DELETE FROM holdings WHERE user_key = ? AND asset IN (${gone.map(() => '?').join(',')})`)
+    .bind(key, ...gone.map((item) => item.asset))
+    .run();
+  await giveMoney(env, key, refund);
+  return refund;
+}
+
 async function economyState(env, key) {
-  return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key) };
+  await balanceOf(env, key);
+  const refunded = await refundRetired(env, key);
+  return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key), ...(refunded ? { refunded } : {}) };
 }
 
 async function economyRoute(path, method, request, env, row) {
