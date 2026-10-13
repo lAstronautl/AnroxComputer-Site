@@ -13,7 +13,8 @@ export const c = {
   grey: paint(90, 39),
   bright: paint(97, 39),
   bold: paint(1, 22),
-  inverse: paint(7, 27)
+  inverse: paint(7, 27),
+  strike: paint(9, 29)
 };
 
 // terminals need CR+LF
@@ -23,3 +24,15 @@ export const crlf = (text) => String(text).replace(/\r?\n/g, '\r\n');
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g;
 
 export const visibleLength = (text) => [...String(text).replace(ANSI, '')].length;
+
+/**
+ * Console-only wording. A post writes `<span data-console="new">old</span>`; the site shows the old text,
+ * the console shows it struck through with the new text next to it. The build turns the tag into ⟦old⇒new⟧.
+ */
+const SWAP = /⟦([^⇒⟧]*)⇒([^⟧]*)⟧/g;
+
+export const swapText = (old, now) => `${c.strike(c.grey(old))} ${c.bright(now)}`;
+
+export const withConsoleSwaps = (text) => String(text).replace(SWAP, (_, old, now) => swapText(old, now));
+
+export const plainSwaps = (text) => String(text).replace(SWAP, (_, old, now) => `${old} ${now}`);

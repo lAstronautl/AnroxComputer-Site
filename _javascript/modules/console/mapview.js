@@ -3,7 +3,7 @@
  * Arrow keys / Tab / digits (or the mouse) pick a zone, Enter opens its page, Esc leaves.
  */
 
-import { ESC, c } from './ansi';
+import { ESC, c, swapText } from './ansi';
 
 const KEY = {
   up: `${ESC}[A`,
@@ -48,6 +48,9 @@ export function playMap(shell, article) {
     const zones = article.zones.map((zone, index) => ({
       ...zone,
       polygon: parsePoints(zone.points),
+      // console-only wording: the site's text struck through, the console's next to it
+      shownTitle: zone.console_title ? swapText(zone.title, zone.console_title) : zone.title,
+      shownText: zone.console_text ? swapText(zone.text ?? '', zone.console_text) : zone.text ?? '',
       sgr: colorOf(zone, index)
     }));
 
@@ -138,7 +141,7 @@ export function playMap(shell, article) {
       let row = top + height + 1;
       zones.forEach((zone, index) => {
         const mark = index === selected ? c.bright('►') : ' ';
-        const label = index === selected ? `${ESC}[1;${zone.sgr}m${zone.title}${ESC}[0m` : c.grey(zone.title);
+        const label = zone.console_title ? zone.shownTitle : index === selected ? `${ESC}[1;${zone.sgr}m${zone.title}${ESC}[0m` : c.grey(zone.title);
         out += `${at(row, left - 1)}${mark} ${c.bright(String((index + 1) % 10))} ${label}`;
         row += 1;
       });
@@ -146,7 +149,7 @@ export function playMap(shell, article) {
       // the chosen zone's text, as many lines as fit
       const free = rows - row - 1;
       const lines = shell
-        .wrap(zones[selected].text ?? '')
+        .wrap(zones[selected].shownText)
         .split('\n')
         .slice(0, Math.max(1, free));
       lines.forEach((text, i) => {

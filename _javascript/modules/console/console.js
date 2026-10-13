@@ -6,7 +6,7 @@
  */
 
 import { WTerm } from '@wterm/dom';
-import { ESC, c, crlf, visibleLength } from './ansi';
+import { ESC, c, crlf, plainSwaps, visibleLength, withConsoleSwaps } from './ansi';
 import { buildFs } from './storage';
 import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
@@ -936,7 +936,7 @@ class Shell {
 
     this.println(c.red(`── ${file.title ?? file.path} ${'─'.repeat(Math.max(2, 40 - [...(file.title ?? file.path)].length))}`));
     const body = String(file.text ?? '').trimEnd();
-    this.println(file.wrap ? this.wrap(body) : body);
+    this.println(file.wrap ? this.wrap(withConsoleSwaps(body)) : body);
     this.println(c.red('─'.repeat(44)));
     this.log({ action: 'read', target: file.path });
 
@@ -953,7 +953,7 @@ class Shell {
     }
 
     const needle = query.toLowerCase();
-    const hits = this.fs.files.filter((file) => `${file.title ?? ''}\n${file.text ?? ''}`.toLowerCase().includes(needle));
+    const hits = this.fs.files.filter((file) => plainSwaps(`${file.title ?? ''}\n${file.text ?? ''}`).toLowerCase().includes(needle));
 
     if (hits.length === 0) {
       this.println(c.grey('Совпадений не найдено.'));
@@ -968,7 +968,7 @@ class Shell {
         continue;
       }
 
-      const flat = String(file.text ?? '').replace(/\s+/g, ' ');
+      const flat = plainSwaps(file.text ?? '').replace(/\s+/g, ' ');
       const at = flat.toLowerCase().indexOf(needle);
       const snippet = at === -1 ? flat.slice(0, 60) : `…${flat.slice(Math.max(0, at - 24), at + needle.length + 30)}…`;
       this.println(`  ${this.tag(file)} ${c.bright(file.path)}  ${c.grey(file.title ?? '')}`);
@@ -1482,7 +1482,7 @@ class Shell {
         const lines = [];
         let line = '';
         for (const word of paragraph.split(' ')) {
-          if (line && [...line].length + 1 + [...word].length > width) {
+          if (line && visibleLength(line) + 1 + visibleLength(word) > width) {
             lines.push(line);
             line = word;
           } else {

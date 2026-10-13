@@ -5,13 +5,28 @@ layout: compress
 {%- comment -%}
   Статьи сайта для вкладки «Консоль»: команды articles / read / goto.
   Абзацы помечаются маркером ¶ — консоль превращает его в перенос строки.
+
+  Текст, который в консоли должен выглядеть иначе, чем на сайте, пишется в посте так:
+    <span data-console="Секретный агент">Ноу нейм</span>
+  На сайте остаётся «Ноу нейм», а в консоли — зачёркнутое «Ноу нейм» и рядом «Секретный агент».
+  Здесь такой тег превращается в маркер ⟦старое⇒новое⟧, который разбирает консоль.
 {%- endcomment -%}
 
 [
   {%- assign sep = false -%}
   {%- for post in site.posts -%}
     {%- if post.categories contains 'Blogging' -%}{%- continue -%}{%- endif -%}
-    {%- assign text = post.content
+    {%- assign content = post.content -%}
+    {%- assign parts = content | split: '<span data-console="' -%}
+    {%- if parts.size > 1 -%}
+      {%- assign content = parts[0] -%}
+      {%- for part in parts offset: 1 -%}
+        {%- assign head = part | split: '">' -%}
+        {%- assign tail = head | shift | join: '">' | split: '</span>' -%}
+        {%- capture content -%}{{ content }}⟦{{ tail[0] }}⇒{{ head[0] }}⟧{{ tail | shift | join: '</span>' }}{%- endcapture -%}
+      {%- endfor -%}
+    {%- endif -%}
+    {%- assign text = content
       | replace: '</p>', '¶'
       | replace: '</h1>', '¶'
       | replace: '</h2>', '¶'
