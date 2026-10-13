@@ -888,19 +888,27 @@ class Shell {
   }
 
   cmdTree() {
-    const walk = (dir, indent) => {
+    // branches are drawn with box characters: ├── for an entry, └── for the last one, │ continues the parent's line
+    const walk = (dir, prefix) => {
       const { folders, files } = this.fs.list(dir);
-      for (const folder of folders) {
-        this.println(`${indent}${c.blue(`${folder}/`)}`);
-        walk(dir === '/' ? `/${folder}` : `${dir}/${folder}`, `${indent}  `);
-      }
-      for (const file of files) {
-        this.println(`${indent}${file.path.split('/').pop()} ${this.tag(file)}`);
-      }
+      const entries = [
+        ...folders.map((folder) => ({ folder })),
+        ...files.map((file) => ({ file }))
+      ];
+      entries.forEach((entry, index) => {
+        const last = index === entries.length - 1;
+        const branch = c.red(`${prefix}${last ? '└── ' : '├── '}`);
+        if (entry.folder) {
+          this.println(`${branch}${c.blue(`${entry.folder}/`)}`);
+          walk(dir === '/' ? `/${entry.folder}` : `${dir}/${entry.folder}`, `${prefix}${last ? '    ' : '│   '}`);
+        } else {
+          this.println(`${branch}${entry.file.path.split('/').pop()} ${this.tag(entry.file)}`);
+        }
+      });
     };
 
     this.println(c.blue('/'));
-    walk('/', '  ');
+    walk('/', '');
   }
 
   cmdCat(args) {
