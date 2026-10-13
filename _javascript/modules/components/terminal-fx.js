@@ -48,7 +48,6 @@ function initHoverSound() {
   window.addEventListener('message', (event) => {
     if (event.data?.id === 'theme-mode') ensureLoop();
   });
-  window.addEventListener('pagehide', () => sound.saveLoopPosition());
   ensureLoop();
 
   let last = null;

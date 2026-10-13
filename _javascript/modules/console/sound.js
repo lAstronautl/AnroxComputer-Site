@@ -8,7 +8,7 @@
 const STORAGE_KEY = 'anco-console-sound';
 const VOLUME_KEY = 'anco-console-volume';
 const DEFAULT_VOLUME = 0.8;
-const POSITION_KEY = 'anco-loop-pos';
+const PHASE_KEY = 'anco-loop-phase'; // wall-clock moment when the loop was at its start (shared by all pages)
 const FADE = 0.4; // seconds the start-up fades into the loop
 const START_GAIN = 0.7;
 const LOOP_GAIN = 0.35;
@@ -148,8 +148,8 @@ export class ConsoleSound {
   }
 
   /**
-   * Ambient loop only (no start-up sting), for the site pages in the console theme. It carries on from where
-   * the previous page left off, so moving between pages does not restart the music from the top.
+   * Ambient loop only (no start-up sting), for the site pages in the console theme. Its position follows a shared
+   * wall clock (see PHASE_KEY), so moving between pages does not restart the music from the top.
    */
   async startLoop() {
     if (!this.enabled || !this.supported || this.playing || !this.loopUrl) return;
@@ -164,14 +164,19 @@ export class ConsoleSound {
       }
       if (!this.enabled || this.playing || this.ctx.state !== 'running') return;
 
-      let offset = 0;
-      try {
-        offset = parseFloat(sessionStorage.getItem(POSITION_KEY)) || 0;
-      } catch {
-        // ignore
-      }
+      // the loop keeps its own clock: wherever the previous page was, this one joins at the same moment
       const duration = this.loopBuffer.duration;
-      offset = duration ? offset % duration : 0;
+      let phase = 0;
+      try {
+        phase = parseFloat(localStorage.getItem(PHASE_KEY)) || 0;
+        if (!phase || phase > Date.now()) {
+          phase = Date.now();
+          localStorage.setItem(PHASE_KEY, String(phase));
+        }
+      } catch {
+        phase = Date.now();
+      }
+      const offset = duration ? ((Date.now() - phase) / 1000) % duration : 0;
 
       const now = this.ctx.currentTime;
       this.master.gain.cancelScheduledValues(now);
@@ -182,27 +187,14 @@ export class ConsoleSound {
       source.loop = true;
       const gain = this.ctx.createGain();
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(LOOP_GAIN, now + 1.2);
+      gain.gain.linearRampToValueAtTime(LOOP_GAIN, now + (offset > 1 ? 0.4 : 1.2));
       source.connect(gain).connect(this.master);
       source.start(0, offset);
 
-      this.loopStartedAt = now;
-      this.loopOffset = offset;
       this.sources = [source];
       this.playing = true;
     } catch (error) {
       console.warn('Ambient loop unavailable:', error);
-    }
-  }
-
-  /** Remembers where the loop is, for the next page. */
-  saveLoopPosition() {
-    if (!this.playing || !this.ctx || !this.loopBuffer) return;
-    const position = (this.loopOffset + (this.ctx.currentTime - this.loopStartedAt)) % this.loopBuffer.duration;
-    try {
-      sessionStorage.setItem(POSITION_KEY, String(position));
-    } catch {
-      // ignore
     }
   }
 
