@@ -190,8 +190,14 @@ class Shell {
     return (this.user?.level ?? 0) >= this.adminLevel;
   }
 
+  // a level between two named ones (say 12) is called after the nearest lower one
   levelName(level) {
-    return this.data.levels?.[level] ?? `УРОВЕНЬ ${level}`;
+    const levels = this.data.levels ?? {};
+    const named = Object.keys(levels)
+      .map(Number)
+      .filter((key) => key <= level)
+      .sort((a, b) => b - a)[0];
+    return named === undefined ? `УРОВЕНЬ ${level}` : levels[named];
   }
 
   /* ---------- line editor ---------- */
