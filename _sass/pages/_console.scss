@@ -335,3 +335,8 @@ body:has(.console-window) {
     }
   }
 }
+
+/* the map takes the whole screen: lines that scrolled off above it are not shown */
+.rp-console-screen.map-mode .term-scrollback-row {
+  display: none;
+}

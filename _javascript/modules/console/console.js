@@ -50,7 +50,8 @@ function slugify(text) {
     .replace(/[а-яё]/g, (letter) => TRANSLIT[letter])
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
+    .slice(0, 26)
+    .replace(/-[^-]*$/, (tail, at, whole) => (whole.length >= 26 ? '' : tail)); // do not cut a word in half
 }
 
 class Shell {
@@ -545,7 +546,12 @@ class Shell {
       const base = file.path.split('/').pop().toLowerCase().replace(/\.[^.]+$/, '');
       return base === wanted;
     });
-    return hits.length === 1 ? hits[0] : null;
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) return null;
+
+    // a unique beginning is enough: `cat otryad-k`
+    const starts = this.fs.files.filter((file) => file.path.split('/').pop().toLowerCase().startsWith(wanted));
+    return starts.length === 1 ? starts[0] : null;
   }
 
   /* ---------- commands ---------- */
@@ -934,16 +940,9 @@ class Shell {
     this.println(c.red('─'.repeat(44)));
     this.log({ action: 'read', target: file.path });
 
-    // a post with an interactive map: the map opens right from the file
-    if (file.zones?.length) return this.offerMap(file);
+    // a post with an interactive map: the map opens right away, below the text
+    if (file.zones?.length) return playMap(this, file);
     return undefined;
-  }
-
-  async offerMap(file) {
-    const answer = await this.ask(c.amber('Открыть интерактивную карту? [Enter — да, н — нет]: '));
-    if (answer != null && !['н', 'нет', 'n', 'no'].includes(answer.trim().toLowerCase())) {
-      await playMap(this, file);
-    }
   }
 
   cmdSearch(args) {

@@ -217,6 +217,7 @@ export function playMap(shell, article) {
       shell.screen?.removeEventListener('pointermove', onMove);
       shell.screen?.removeEventListener('click', onClick);
       shell.setKeyHandler(null);
+      shell.screen?.classList.remove('map-mode');
       shell.raw(`${ESC}[?25h${ESC}[?1049l`);
       resolve();
     }
@@ -236,6 +237,7 @@ export function playMap(shell, article) {
       }
     });
 
+    shell.screen?.classList.add('map-mode');
     shell.raw(`${ESC}[?1049h${ESC}[?25l`);
     draw();
   });
