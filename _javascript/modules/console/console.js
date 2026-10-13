@@ -1358,9 +1358,9 @@ class Shell {
       return;
     }
 
-    const password = await this.ask(c.amber(`Новый пароль для ${name} (от 4 символов): `), { secret: true });
+    const password = await this.ask(c.amber(`Новый пароль для ${name} (от 4 символов, Enter — сгенерировать): `), { secret: true });
     if (password == null) return;
-    if (password.length < 4) {
+    if (password !== '' && password.length < 4) {
       this.failure('bad-password');
       return;
     }
@@ -1372,6 +1372,10 @@ class Shell {
       return;
     }
     this.println(c.green(`Пароль сотрудника ${result.target.name} изменён. Все его сеансы завершены.`));
+    if (result.password) {
+      this.println(`Новый пароль: ${c.bold(c.amber(result.password))}`);
+      this.println(c.grey('Он показан один раз и нигде не сохраняется — передайте его сотруднику.'));
+    }
     await this.refreshUser();
   }
 

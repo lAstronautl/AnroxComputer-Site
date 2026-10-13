@@ -47,6 +47,13 @@ function withUnread(user) {
   return { ...user, unread: box.filter((letter) => !letter.read).length };
 }
 
+// readable password without look-alike characters (no 0/O, 1/l/I)
+function generatePassword(length = 10) {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
 export class LocalBackend {
   constructor(data) {
     this.data = data;
@@ -169,9 +176,11 @@ export class LocalBackend {
     const { target, error } = this.manageable(actor, name);
     if (error) return { error };
 
-    await setPassword(target.name, password);
+    const generated = password === '';
+    const next = generated ? generatePassword() : password;
+    await setPassword(target.name, next);
     logAttempt(actor.name, { action: 'resetpass', target: target.name });
-    return { target: { name: target.name } };
+    return { target: { name: target.name }, ...(generated ? { password: next } : {}) };
   }
 
   async fire(actor, name) {

@@ -48,6 +48,13 @@ async function sha256(text) {
   return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
 }
 
+// readable password without look-alike characters (no 0/O, 1/l/I)
+function generatePassword(length = 10) {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
 async function hashPassword(password, salt) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
@@ -480,7 +487,9 @@ async function route(request, env) {
     requireAdmin(row);
     const body = await readBody(request);
     const target = await manageable(env, row, body.name);
-    const password = String(body.password ?? '');
+    // an empty password means "make one up": it is shown to the administrator once and stored only as a hash
+    const generated = String(body.password ?? '') === '';
+    const password = generated ? generatePassword() : String(body.password);
     if (password.length < 4 || password.length > 100) throw new ApiError(400, 'bad-password');
 
     const salt = randomHex(16);
@@ -489,7 +498,7 @@ async function route(request, env) {
       .run();
     await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(target.key).run(); // sign them out everywhere
     await addAttempt(env, row.key, 'resetpass', target.name);
-    return { target: { name: target.name } };
+    return { target: { name: target.name }, ...(generated ? { password } : {}) };
   }
 
   if (path === '/api/fire' && method === 'POST') {
