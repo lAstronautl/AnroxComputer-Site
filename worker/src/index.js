@@ -5,6 +5,23 @@
  */
 
 import { ACTIONS, ADMIN_LEVEL, MAX_LEVEL } from './config.js';
+import {
+  ASSETS,
+  DOLE_COOLDOWN,
+  DOLE_LIMIT,
+  FEE,
+  MAX_BET,
+  ROULETTE_BETS,
+  START_BALANCE,
+  crashMultiplier,
+  crashPoint,
+  priceAt,
+  rollDice,
+  snapshot,
+  spinRoulette,
+  spinSlots,
+  tickOf
+} from './economy.js';
 
 const NAME_RULE = /^[\p{L}\p{N}_-]{2,24}$/u;
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -267,6 +284,217 @@ async function addAttempt(env, key, action, target) {
     .run();
 }
 
+/* ---------- economy: wallet, market, casino ---------- */
+
+let economyReady = false;
+
+// the tables are created on first use, so the economy needs no manual database migration
+async function ensureEconomy(env) {
+  if (economyReady) return;
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS wallets (user_key TEXT PRIMARY KEY, balance INTEGER NOT NULL, dole_at INTEGER NOT NULL DEFAULT 0)'),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS holdings (user_key TEXT NOT NULL, asset TEXT NOT NULL, qty INTEGER NOT NULL, cost INTEGER NOT NULL, PRIMARY KEY (user_key, asset))'
+    ),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS rounds (user_key TEXT PRIMARY KEY, bet INTEGER NOT NULL, crash REAL NOT NULL, started INTEGER NOT NULL)')
+  ]);
+  economyReady = true;
+}
+
+const seedOf = (env) => String(env.MARKET_SEED ?? 'anrox-market');
+
+async function balanceOf(env, key) {
+  await ensureEconomy(env);
+  await env.DB.prepare('INSERT OR IGNORE INTO wallets (user_key, balance) VALUES (?, ?)').bind(key, START_BALANCE).run();
+  return (await env.DB.prepare('SELECT balance FROM wallets WHERE user_key = ?').bind(key).first()).balance;
+}
+
+async function holdingsOf(env, key) {
+  const { results } = await env.DB.prepare('SELECT asset, qty, cost FROM holdings WHERE user_key = ? AND qty > 0 ORDER BY asset').bind(key).all();
+  return results.map((item) => ({ asset: item.asset, qty: item.qty, cost: item.cost }));
+}
+
+// money is taken in one conditional statement, so two parallel requests cannot spend the same crypto-ends twice
+async function takeMoney(env, key, amount) {
+  const result = await env.DB.prepare('UPDATE wallets SET balance = balance - ? WHERE user_key = ? AND balance >= ?').bind(amount, key, amount).run();
+  if (!result.meta.changes) throw new ApiError(402, 'funds');
+}
+
+async function giveMoney(env, key, amount) {
+  if (amount > 0) await env.DB.prepare('UPDATE wallets SET balance = balance + ? WHERE user_key = ?').bind(amount, key).run();
+}
+
+function betOf(body) {
+  const bet = Math.floor(Number(body.bet));
+  if (!Number.isFinite(bet) || bet < 1 || bet > MAX_BET) throw new ApiError(400, 'bad-bet');
+  return bet;
+}
+
+async function wipeEconomy(env, key) {
+  try {
+    await ensureEconomy(env);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM wallets WHERE user_key = ?').bind(key),
+      env.DB.prepare('DELETE FROM holdings WHERE user_key = ?').bind(key),
+      env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(key)
+    ]);
+  } catch {
+    // the economy was never used
+  }
+}
+
+async function economyState(env, key) {
+  return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key) };
+}
+
+async function economyRoute(path, method, request, env, row) {
+  const now = Date.now();
+  const seed = seedOf(env);
+
+  if (path === '/api/wallet' && method === 'GET') {
+    const state = await economyState(env, row.key);
+    const tick = tickOf(now);
+    const worth = state.holdings.reduce((sum, item) => {
+      const asset = ASSETS.find((entry) => entry.id === item.asset);
+      return sum + (asset ? Math.floor(priceAt(asset, tick, seed) * item.qty) : 0);
+    }, 0);
+    return { ...state, worth, assets: ASSETS.map((asset) => ({ id: asset.id, name: asset.name, price: priceAt(asset, tick, seed) })) };
+  }
+
+  if (path === '/api/market' && method === 'GET') {
+    return { ...snapshot(now, seed), ...(await economyState(env, row.key)), fee: FEE };
+  }
+
+  if (path === '/api/market/trade' && method === 'POST') {
+    const body = await readBody(request);
+    const asset = ASSETS.find((entry) => entry.id === String(body.asset ?? '').toUpperCase());
+    const qty = Math.floor(Number(body.qty));
+    if (!asset || !Number.isFinite(qty) || qty < 1 || qty > 1000000) throw new ApiError(400, 'bad-trade');
+    const side = String(body.side ?? '');
+    if (side !== 'buy' && side !== 'sell') throw new ApiError(400, 'bad-trade');
+
+    await balanceOf(env, row.key);
+    const price = priceAt(asset, tickOf(now), seed);
+    let total;
+    if (side === 'buy') {
+      total = Math.ceil(price * qty * (1 + FEE));
+      await takeMoney(env, row.key, total);
+      await env.DB.prepare(
+        'INSERT INTO holdings (user_key, asset, qty, cost) VALUES (?, ?, ?, ?) ON CONFLICT (user_key, asset) DO UPDATE SET qty = qty + excluded.qty, cost = cost + excluded.cost'
+      )
+        .bind(row.key, asset.id, qty, total)
+        .run();
+    } else {
+      const held = await env.DB.prepare('SELECT qty, cost FROM holdings WHERE user_key = ? AND asset = ?').bind(row.key, asset.id).first();
+      if (!held || held.qty < qty) throw new ApiError(409, 'no-assets');
+      const costOut = Math.round((held.cost * qty) / held.qty);
+      const sold = await env.DB.prepare('UPDATE holdings SET qty = qty - ?, cost = MAX(0, cost - ?) WHERE user_key = ? AND asset = ? AND qty >= ?')
+        .bind(qty, costOut, row.key, asset.id, qty)
+        .run();
+      if (!sold.meta.changes) throw new ApiError(409, 'no-assets');
+      await env.DB.prepare('DELETE FROM holdings WHERE user_key = ? AND qty <= 0').bind(row.key).run();
+      total = Math.floor(price * qty * (1 - FEE));
+      await giveMoney(env, row.key, total);
+    }
+    return { trade: { asset: asset.id, side, qty, price, total }, ...(await economyState(env, row.key)) };
+  }
+
+  if (path === '/api/wallet/dole' && method === 'POST') {
+    const balance = await balanceOf(env, row.key);
+    if (balance >= DOLE_LIMIT) throw new ApiError(409, 'no-dole');
+    const result = await env.DB.prepare('UPDATE wallets SET balance = ?, dole_at = ? WHERE user_key = ? AND balance < ? AND dole_at <= ?')
+      .bind(DOLE_LIMIT, now, row.key, DOLE_LIMIT, now - DOLE_COOLDOWN)
+      .run();
+    if (!result.meta.changes) {
+      const wallet = await env.DB.prepare('SELECT dole_at FROM wallets WHERE user_key = ?').bind(row.key).first();
+      return { error: 'dole-wait', wait: Math.max(0, wallet.dole_at + DOLE_COOLDOWN - now) };
+    }
+    return { dole: DOLE_LIMIT - balance, ...(await economyState(env, row.key)) };
+  }
+
+  if (path === '/api/rich' && method === 'GET') {
+    await ensureEconomy(env);
+    const tick = tickOf(now);
+    const { results: wallets } = await env.DB.prepare('SELECT w.user_key AS key, u.name AS name, w.balance AS balance FROM wallets w JOIN users u ON u.key = w.user_key').all();
+    const { results: held } = await env.DB.prepare('SELECT user_key, asset, qty FROM holdings WHERE qty > 0').all();
+    const worth = new Map(wallets.map((item) => [item.key, item.balance]));
+    for (const item of held) {
+      const asset = ASSETS.find((entry) => entry.id === item.asset);
+      if (asset && worth.has(item.user_key)) worth.set(item.user_key, worth.get(item.user_key) + Math.floor(priceAt(asset, tick, seed) * item.qty));
+    }
+    const top = wallets.map((item) => ({ name: item.name, worth: worth.get(item.key), me: item.key === row.key })).sort((a, b) => b.worth - a.worth).slice(0, 10);
+    return { top };
+  }
+
+  if (!path.startsWith('/api/casino/') || method !== 'POST') return null;
+  const body = await readBody(request);
+  const game = path.slice('/api/casino/'.length);
+
+  if (game === 'slots') {
+    const bet = betOf(body);
+    await balanceOf(env, row.key);
+    await takeMoney(env, row.key, bet);
+    const spin = spinSlots();
+    const payout = Math.floor(bet * spin.multiplier);
+    await giveMoney(env, row.key, payout);
+    return { ...spin, bet, payout, balance: await balanceOf(env, row.key) };
+  }
+
+  if (game === 'roulette') {
+    const bet = betOf(body);
+    const type = String(body.type ?? '');
+    const value = Math.floor(Number(body.value ?? 0));
+    if (!ROULETTE_BETS[type]) throw new ApiError(400, 'bad-bet');
+    await balanceOf(env, row.key);
+    const spin = spinRoulette(type, value);
+    if (!spin) throw new ApiError(400, 'bad-bet');
+    await takeMoney(env, row.key, bet);
+    const payout = Math.floor(bet * spin.multiplier);
+    await giveMoney(env, row.key, payout);
+    return { ...spin, type, value, bet, payout, balance: await balanceOf(env, row.key) };
+  }
+
+  if (game === 'dice') {
+    const bet = betOf(body);
+    const target = Math.floor(Number(body.target));
+    const roll = rollDice(String(body.mode ?? ''), target);
+    if (!roll) throw new ApiError(400, 'bad-bet');
+    await balanceOf(env, row.key);
+    await takeMoney(env, row.key, bet);
+    const payout = Math.floor(bet * roll.multiplier);
+    await giveMoney(env, row.key, payout);
+    return { ...roll, mode: body.mode, target, bet, payout, balance: await balanceOf(env, row.key) };
+  }
+
+  if (game === 'crash/start') {
+    const bet = betOf(body);
+    await balanceOf(env, row.key);
+    await takeMoney(env, row.key, bet); // an abandoned earlier round simply stays lost
+    await env.DB.prepare('INSERT OR REPLACE INTO rounds (user_key, bet, crash, started) VALUES (?, ?, ?, ?)').bind(row.key, bet, crashPoint(), now).run();
+    return { started: now, bet, balance: await balanceOf(env, row.key) };
+  }
+
+  if (game === 'crash/status' || game === 'crash/cashout') {
+    await ensureEconomy(env);
+    const round = await env.DB.prepare('SELECT bet, crash, started FROM rounds WHERE user_key = ?').bind(row.key).first();
+    if (!round) throw new ApiError(409, 'no-round');
+    const multiplier = crashMultiplier(now - round.started);
+    if (multiplier >= round.crash) {
+      await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
+      return { crashed: true, at: round.crash, bet: round.bet, balance: await balanceOf(env, row.key) };
+    }
+    if (game === 'crash/status') return { alive: true, multiplier };
+
+    const taken = await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
+    if (!taken.meta.changes) throw new ApiError(409, 'no-round');
+    const payout = Math.floor(round.bet * multiplier);
+    await giveMoney(env, row.key, payout);
+    return { won: true, multiplier, bet: round.bet, payout, crashAt: round.crash, balance: await balanceOf(env, row.key) };
+  }
+
+  throw new ApiError(404, 'not-found');
+}
+
 async function route(request, env) {
   const { pathname } = new URL(request.url);
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -281,6 +509,9 @@ async function route(request, env) {
 
   if (path === '/api/me' && method === 'GET') return { user: await publicUser(env, row) };
 
+  const economy = await economyRoute(path, method, request, env, row);
+  if (economy) return economy;
+
   if (path === '/api/logout' && method === 'POST') {
     await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run();
     return { ok: true };
@@ -290,6 +521,7 @@ async function route(request, env) {
     await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(row.key).run();
     await env.DB.prepare('DELETE FROM attempts WHERE user_key = ?').bind(row.key).run();
     await env.DB.prepare('DELETE FROM mail WHERE to_key = ?').bind(row.key).run();
+    await wipeEconomy(env, row.key);
     await env.DB.prepare('DELETE FROM users WHERE key = ?').bind(row.key).run();
     return { ok: true };
   }
@@ -501,6 +733,7 @@ async function route(request, env) {
     await env.DB.prepare('DELETE FROM sessions WHERE user_key = ?').bind(target.key).run();
     await env.DB.prepare('DELETE FROM attempts WHERE user_key = ?').bind(target.key).run();
     await env.DB.prepare('DELETE FROM mail WHERE to_key = ?').bind(target.key).run();
+    await wipeEconomy(env, target.key);
     await env.DB.prepare('DELETE FROM users WHERE key = ?').bind(target.key).run();
     await addAttempt(env, row.key, 'fire', `${target.name} L${target.level}`);
     return { target: { name: target.name } };

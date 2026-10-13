@@ -60,6 +60,11 @@ export class LocalBackend {
     this.remote = false;
   }
 
+  // the exchange and the casino keep their money on the server
+  async call() {
+    return { error: 'offline' };
+  }
+
   async login(name, password) {
     const user = await verifyUser(name, password);
     if (!user) return { error: 'credentials' };

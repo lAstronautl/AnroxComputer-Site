@@ -10,7 +10,9 @@ import { ESC, c, crlf, plainSwaps, visibleLength, withConsoleSwaps } from './ans
 import { buildFs } from './storage';
 import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
+import { playCasino } from './casino';
 import { playMap } from './mapview';
+import { claimDole, playMarket, showTop, showWallet } from './market';
 import { ConsoleSound } from './sound';
 import { createKnob } from './knob';
 import { LOGO, LOGO_SMALL, LOGO_WIDTH } from './logo';
@@ -732,6 +734,31 @@ class Shell {
         desc: 'громкость (sound 0–100, on, off)',
         run: (args) => this.cmdSound(args)
       },
+      wallet: {
+        desc: 'кошелёк: баланс в крипто-ендах',
+        auth: true,
+        run: () => showWallet(this)
+      },
+      market: {
+        desc: 'биржа: торговля акциями, ресурсами и ЕндКоином',
+        auth: true,
+        run: () => playMarket(this)
+      },
+      casino: {
+        desc: 'казино: слоты, рулетка, кости, взлёт',
+        auth: true,
+        run: () => playCasino(this)
+      },
+      top: {
+        desc: 'рейтинг самых богатых сотрудников',
+        auth: true,
+        run: () => showTop(this)
+      },
+      dole: {
+        desc: 'пособие тем, у кого меньше 100 КЕ',
+        auth: true,
+        run: () => claimDole(this)
+      },
       games: {
         desc: 'список игр',
         auth: true,
@@ -766,6 +793,12 @@ class Shell {
     commands.перевод = commands.transfer;
     commands.уволить = commands.fire;
     commands.флешбенг = commands.flashbang;
+    commands.баланс = commands.wallet;
+    commands.кошелёк = commands.wallet;
+    commands.биржа = commands.market;
+    commands.казино = commands.casino;
+    commands.рейтинг = commands.top;
+    commands.пособие = commands.dole;
     commands.exit = commands.logout;
     commands['?'] = commands.help;
     return commands;
@@ -1570,6 +1603,11 @@ class Shell {
     this.println(`  ${c.amber('snake')}  — «Змейка»  ${c.grey('(стрелки / WASD)')}`);
     this.println(`  ${c.amber('hack')}   — «Взлом»   ${c.grey('(найдите пароль в дампе памяти)')}`);
     this.println(c.grey('Запуск: play snake'));
+    this.println('');
+    this.println(c.bold(c.red('На крипто-енды (КЕ):')));
+    this.println(`  ${c.amber('market')}  — биржа    ${c.grey('(цены меняются каждые 5 секунд)')}`);
+    this.println(`  ${c.amber('casino')}  — казино   ${c.grey('(слоты, рулетка, кости, взлёт)')}`);
+    this.println(`  ${c.amber('wallet')}  — кошелёк  ${c.grey('(общий баланс биржи и казино)')}`);
   }
 
   async cmdPlay(args) {
