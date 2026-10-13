@@ -4,19 +4,23 @@
  * уровень допуска и коды проверяются здесь же — браузеру доверять нельзя.
  */
 
-import { ACTIONS, ADMIN_LEVEL, MAX_LEVEL } from './config.js';
+import { ACTIONS, ADMIN_LEVEL, MARKET_ADMIN_LEVEL, MAX_LEVEL } from './config.js';
 import {
   ASSETS,
   DOLE_COOLDOWN,
   DOLE_LIMIT,
   FEE,
   MAX_BET,
+  marketPrice,
+  tradeImpact,
+  DEMAND_HALF_MS,
+  HISTORY_TICKS,
+  TICK_MS,
   ROULETTE_BETS,
   START_BALANCE,
   CRASH_GRACE_MS,
   crashMultiplier,
   crashPoint,
-  priceAt,
   rollDice,
   snapshot,
   spinRoulette,
@@ -297,8 +301,13 @@ async function ensureEconomy(env) {
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS holdings (user_key TEXT NOT NULL, asset TEXT NOT NULL, qty INTEGER NOT NULL, cost INTEGER NOT NULL, PRIMARY KEY (user_key, asset))'
     ),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS demand (id INTEGER PRIMARY KEY AUTOINCREMENT, asset TEXT NOT NULL, t INTEGER NOT NULL, impact REAL NOT NULL)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, name TEXT NOT NULL, asset TEXT NOT NULL, side TEXT NOT NULL, qty INTEGER NOT NULL, price REAL NOT NULL, pct REAL NOT NULL)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS market_edits (asset TEXT PRIMARY KEY, base REAL, vol REAL, hidden INTEGER NOT NULL DEFAULT 0)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS custom_assets (id TEXT PRIMARY KEY, name TEXT NOT NULL, grp TEXT NOT NULL, kind TEXT NOT NULL, base REAL NOT NULL, vol REAL NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS rounds (user_key TEXT PRIMARY KEY, bet INTEGER NOT NULL, crash REAL NOT NULL, started INTEGER NOT NULL)')
   ]);
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS demand_asset ON demand (asset, t)').run();
   economyReady = true;
 }
 
@@ -346,8 +355,9 @@ async function wipeEconomy(env, key) {
 
 // a company that left the exchange is bought back at the price the player paid for it
 async function refundRetired(env, key) {
+  const assets = await assetsOf(env);
   const held = await holdingsOf(env, key);
-  const gone = held.filter((item) => !ASSETS.some((asset) => asset.id === item.asset));
+  const gone = held.filter((item) => !assets.some((asset) => asset.id === item.asset));
   if (!gone.length) return 0;
   const refund = gone.reduce((sum, item) => sum + item.cost, 0);
   await env.DB.prepare(`DELETE FROM holdings WHERE user_key = ? AND asset IN (${gone.map(() => '?').join(',')})`)
@@ -357,10 +367,101 @@ async function refundRetired(env, key) {
   return refund;
 }
 
+// recent trades of everyone: they are what moves the prices (older ones have faded away)
+async function loadDemand(env, now) {
+  await ensureEconomy(env);
+  const { results } = await env.DB.prepare('SELECT asset, t, impact FROM demand WHERE t > ?').bind(now - 12 * DEMAND_HALF_MS).all();
+  const byAsset = {};
+  for (const item of results) (byAsset[item.asset] ??= []).push({ t: item.t, impact: item.impact });
+  return byAsset;
+}
+
+// the companies on the exchange: the built-in ones with the market editor's changes, plus the ones it added
+async function assetsOf(env) {
+  await ensureEconomy(env);
+  const { results: edits } = await env.DB.prepare('SELECT asset, base, vol, hidden FROM market_edits').all();
+  const { results: custom } = await env.DB.prepare('SELECT id, name, grp, kind, base, vol FROM custom_assets ORDER BY rowid').all();
+  const changed = new Map(edits.map((item) => [item.asset, item]));
+  const builtin = ASSETS.filter((asset) => !changed.get(asset.id)?.hidden).map((asset) => {
+    const edit = changed.get(asset.id);
+    return { ...asset, base: edit?.base ?? asset.base, vol: edit?.vol ?? asset.vol };
+  });
+  const added = custom.map((item) => ({ id: item.id, name: item.name, group: item.grp, kind: item.kind, base: item.base, vol: item.vol, noise: Math.min(0.06, item.vol * 0.07) }));
+  return [...builtin, ...added];
+}
+
+async function recentTrades(env) {
+  await ensureEconomy(env);
+  const { results } = await env.DB.prepare('SELECT t, name, asset, side, qty, price, pct FROM trades ORDER BY id DESC LIMIT 40').all();
+  return results;
+}
+
 async function economyState(env, key) {
   await balanceOf(env, key);
   const refunded = await refundRetired(env, key);
   return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key), ...(refunded ? { refunded } : {}) };
+}
+
+/** Market editor (level MARKET_ADMIN_LEVEL and up): news shocks, price levels, volatility, new and removed companies. */
+async function editMarket(env, row, body, now) {
+  const op = String(body.op ?? '');
+  const id = String(body.asset ?? '').trim().toUpperCase();
+  const assets = await assetsOf(env);
+  const known = assets.find((asset) => asset.id === id);
+  const number = Number(body.value);
+  const need = () => {
+    if (!known) throw new ApiError(404, 'no-asset');
+    return known;
+  };
+  let summary;
+
+  if (op === 'shock') {
+    const asset = need();
+    if (!Number.isFinite(number) || Math.abs(number) > 90) throw new ApiError(400, 'bad-value');
+    await env.DB.prepare('INSERT INTO demand (asset, t, impact) VALUES (?, ?, ?)').bind(asset.id, now, Math.log(1 + number / 100)).run();
+    summary = `shock ${asset.id} ${number}%`;
+  } else if (op === 'base') {
+    const asset = need();
+    if (!Number.isFinite(number) || number < 1 || number > 100000) throw new ApiError(400, 'bad-value');
+    await env.DB.prepare('INSERT INTO market_edits (asset, base) VALUES (?, ?) ON CONFLICT (asset) DO UPDATE SET base = excluded.base').bind(asset.id, number).run();
+    if (!ASSETS.some((entry) => entry.id === asset.id)) await env.DB.prepare('UPDATE custom_assets SET base = ? WHERE id = ?').bind(number, asset.id).run();
+    summary = `base ${asset.id} ${number}`;
+  } else if (op === 'vol') {
+    const asset = need();
+    if (!Number.isFinite(number) || number < 0.01 || number > 2) throw new ApiError(400, 'bad-value');
+    await env.DB.prepare('INSERT INTO market_edits (asset, vol) VALUES (?, ?) ON CONFLICT (asset) DO UPDATE SET vol = excluded.vol').bind(asset.id, number).run();
+    if (!ASSETS.some((entry) => entry.id === asset.id)) await env.DB.prepare('UPDATE custom_assets SET vol = ? WHERE id = ?').bind(number, asset.id).run();
+    summary = `vol ${asset.id} ${number}`;
+  } else if (op === 'add') {
+    const name = String(body.name ?? '').trim().slice(0, 40);
+    const group = String(body.group ?? '').trim().slice(0, 24) || 'Прочее';
+    const kind = String(body.kind ?? '').trim().slice(0, 16) || 'акции';
+    const base = Number(body.base);
+    const vol = Number(body.vol ?? 0.3);
+    if (!/^[A-Z0-9]{2,5}$/.test(id) || !name || !(base >= 1 && base <= 100000) || !(vol >= 0.01 && vol <= 2)) throw new ApiError(400, 'bad-value');
+    const taken = known || ASSETS.some((entry) => entry.id === id);
+    if (taken) throw new ApiError(409, 'taken');
+    await env.DB.prepare('INSERT INTO custom_assets (id, name, grp, kind, base, vol) VALUES (?, ?, ?, ?, ?, ?)').bind(id, name, group, kind, base, vol).run();
+    summary = `add ${id} ${name}`;
+  } else if (op === 'remove') {
+    const asset = need();
+    if (ASSETS.some((entry) => entry.id === asset.id)) {
+      await env.DB.prepare('INSERT INTO market_edits (asset, hidden) VALUES (?, 1) ON CONFLICT (asset) DO UPDATE SET hidden = 1').bind(asset.id).run();
+    } else {
+      await env.DB.prepare('DELETE FROM custom_assets WHERE id = ?').bind(asset.id).run();
+    }
+    summary = `remove ${asset.id}`;
+  } else if (op === 'reset') {
+    if (!id) throw new ApiError(400, 'bad-value');
+    await env.DB.prepare('DELETE FROM market_edits WHERE asset = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM demand WHERE asset = ?').bind(id).run();
+    summary = `reset ${id}`;
+  } else {
+    throw new ApiError(400, 'bad-value');
+  }
+
+  await addAttempt(env, row.key, 'market-edit', summary.slice(0, 120));
+  return { ok: true, summary, assets: (await assetsOf(env)).map((asset) => ({ id: asset.id, name: asset.name, group: asset.group, kind: asset.kind, base: asset.base, vol: asset.vol })) };
 }
 
 async function economyRoute(path, method, request, env, row) {
@@ -370,27 +471,35 @@ async function economyRoute(path, method, request, env, row) {
   if (path === '/api/wallet' && method === 'GET') {
     const state = await economyState(env, row.key);
     const tick = tickOf(now);
+    const demand = await loadDemand(env, now);
+    const assets = await assetsOf(env);
+    const quote = (asset) => marketPrice(asset, tick, seed, demand[asset.id], now);
     const worth = state.holdings.reduce((sum, item) => {
-      const asset = ASSETS.find((entry) => entry.id === item.asset);
-      return sum + (asset ? Math.floor(priceAt(asset, tick, seed) * item.qty) : 0);
+      const asset = assets.find((entry) => entry.id === item.asset);
+      return sum + (asset ? Math.floor(quote(asset) * item.qty) : 0);
     }, 0);
-    return { ...state, worth, assets: ASSETS.map((asset) => ({ id: asset.id, name: asset.name, price: priceAt(asset, tick, seed) })) };
+    return { ...state, worth, assets: assets.map((asset) => ({ id: asset.id, name: asset.name, price: quote(asset) })) };
   }
 
   if (path === '/api/market' && method === 'GET') {
-    return { ...snapshot(now, seed), ...(await economyState(env, row.key)), fee: FEE };
+    const state = await economyState(env, row.key);
+    return { ...snapshot(now, seed, await loadDemand(env, now), await assetsOf(env)), ...state, fee: FEE, trades: await recentTrades(env), editor: row.level >= MARKET_ADMIN_LEVEL };
   }
 
   if (path === '/api/market/trade' && method === 'POST') {
     const body = await readBody(request);
-    const asset = ASSETS.find((entry) => entry.id === String(body.asset ?? '').toUpperCase());
+    const asset = (await assetsOf(env)).find((entry) => entry.id === String(body.asset ?? '').toUpperCase());
     const qty = Math.floor(Number(body.qty));
     if (!asset || !Number.isFinite(qty) || qty < 1 || qty > 1000000) throw new ApiError(400, 'bad-trade');
     const side = String(body.side ?? '');
     if (side !== 'buy' && side !== 'sell') throw new ApiError(400, 'bad-trade');
 
     await balanceOf(env, row.key);
-    const price = priceAt(asset, tickOf(now), seed);
+    const demand = await loadDemand(env, now);
+    const quoted = marketPrice(asset, tickOf(now), seed, demand[asset.id], now);
+    // a big order moves the price, and it is filled at the average of the price before and after
+    const impact = tradeImpact(quoted * qty);
+    const price = Math.round(quoted * Math.exp(side === 'buy' ? impact / 2 : -impact / 2) * 100) / 100;
     let total;
     if (side === 'buy') {
       total = Math.ceil(price * qty * (1 + FEE));
@@ -412,7 +521,19 @@ async function economyRoute(path, method, request, env, row) {
       total = Math.floor(price * qty * (1 - FEE));
       await giveMoney(env, row.key, total);
     }
+    // the journal everyone sees: who traded what, and where the price stood against six minutes ago
+    const sixMinutesAgo = marketPrice(asset, tickOf(now) - HISTORY_TICKS + 1, seed, demand[asset.id], (tickOf(now) - HISTORY_TICKS + 1) * TICK_MS);
+    const pct = Math.round((quoted / sixMinutesAgo - 1) * 1000) / 10;
+    await env.DB.prepare('INSERT INTO trades (t, name, asset, side, qty, price, pct) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(now, row.name, asset.id, side, qty, price, pct).run();
+    await env.DB.prepare('DELETE FROM trades WHERE id <= (SELECT MAX(id) FROM trades) - 200').run();
+    await env.DB.prepare('INSERT INTO demand (asset, t, impact) VALUES (?, ?, ?)').bind(asset.id, now, side === 'buy' ? impact : -impact).run();
+    await env.DB.prepare('DELETE FROM demand WHERE t < ?').bind(now - 12 * DEMAND_HALF_MS).run();
     return { trade: { asset: asset.id, side, qty, price, total }, ...(await economyState(env, row.key)) };
+  }
+
+  if (path === '/api/market/edit' && method === 'POST') {
+    if (row.level < MARKET_ADMIN_LEVEL) throw new ApiError(403, 'forbidden');
+    return editMarket(env, row, await readBody(request), now);
   }
 
   if (path === '/api/wallet/dole' && method === 'POST') {
@@ -433,10 +554,12 @@ async function economyRoute(path, method, request, env, row) {
     const tick = tickOf(now);
     const { results: wallets } = await env.DB.prepare('SELECT w.user_key AS key, u.name AS name, w.balance AS balance FROM wallets w JOIN users u ON u.key = w.user_key').all();
     const { results: held } = await env.DB.prepare('SELECT user_key, asset, qty FROM holdings WHERE qty > 0').all();
+    const demand = await loadDemand(env, now);
+    const assets = await assetsOf(env);
     const worth = new Map(wallets.map((item) => [item.key, item.balance]));
     for (const item of held) {
-      const asset = ASSETS.find((entry) => entry.id === item.asset);
-      if (asset && worth.has(item.user_key)) worth.set(item.user_key, worth.get(item.user_key) + Math.floor(priceAt(asset, tick, seed) * item.qty));
+      const asset = assets.find((entry) => entry.id === item.asset);
+      if (asset && worth.has(item.user_key)) worth.set(item.user_key, worth.get(item.user_key) + Math.floor(marketPrice(asset, tick, seed, demand[asset.id], now) * item.qty));
     }
     const top = wallets.map((item) => ({ name: item.name, worth: worth.get(item.key), me: item.key === row.key })).sort((a, b) => b.worth - a.worth).slice(0, 10);
     return { top };

@@ -109,3 +109,13 @@ npx wrangler d1 execute anroxcomputers --remote --command "DELETE FROM users WHE
 `npx wrangler dev` запускает API на `http://localhost:8787` (с локальной базой:
 `npx wrangler d1 execute anroxcomputers --local --file=schema.sql`). Для сайта на localhost
 в `wrangler.toml` включён `ALLOW_LOCALHOST`; в боевой версии его можно убрать.
+
+## Рынок: уровень 999
+
+Биржа и казино хранят данные в D1 (таблицы создаются сами). Править рынок (новости, цены, новые компании — команда `marketedit` или клавиша `E` на экране биржи) может только сотрудник с уровнем 999. Выдаётся в консоли D1:
+
+```sql
+UPDATE users SET level = 999 WHERE key = 'позывной_в_нижнем_регистре';
+```
+
+Необязательно: переменная `MARKET_SEED` (любая случайная строка) в настройках Worker — чтобы цены нельзя было предсказать по коду.

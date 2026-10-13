@@ -5,13 +5,20 @@
  */
 
 import { ESC, c, visibleLength } from './ansi';
-import { KEY, UNIT, barChart, sgr, box, clip, errorText, fmt, isBack, isEnter, money, openScreen, pad, percent, quote, signed, spark, tooSmall, toneOf } from './tui';
+import { KEY, UNIT, at, barChart, sgr, box, clip, errorText, fmt, isBack, isEnter, money, openScreen, pad, percent, quote, signed, spark, tooSmall, toneOf } from './tui';
 
 const POLL_MS = 2500;
 const CHART_HINTS = 3;
 
 // every corporation has its own colour, so the companies of one group are easy to tell apart
 const GROUP_TONES = { Anrox: '33', MiliGalax: '36', StarDust: '35', Subea: '94' };
+// how strongly buyers (▲) or sellers (▼) push the price right now
+function demandMark(value = 0) {
+  const level = Math.abs(value) > 0.15 ? 3 : Math.abs(value) > 0.06 ? 2 : Math.abs(value) > 0.015 ? 1 : 0;
+  if (!level) return c.grey('··');
+  return (value > 0 ? c.green : c.red)((value > 0 ? '▲' : '▼').repeat(level));
+}
+
 const groupTone = (group) => GROUP_TONES[group] ?? '37';
 
 /* ---------- wallet ---------- */
@@ -81,6 +88,79 @@ export async function claimDole(shell) {
   }
 }
 
+/* ---------- market editor (top level only) ---------- */
+
+export const EDIT_HELP = [
+  'shock <ТИКЕР> <±%>              новость: резкий скачок цены, потом затухает',
+  'base <ТИКЕР> <цена>             новый базовый уровень цены (насовсем)',
+  'vol <ТИКЕР> <0.01–2>            размах колебаний',
+  'add <ТИКЕР> "Название" <группа> <вид> <цена> [размах]   новая компания',
+  'remove <ТИКЕР>                  снять компанию (акционерам вернут вложенное)',
+  'reset <ТИКЕР>                   вернуть исходные настройки'
+];
+
+const EDIT_OPS = { shock: 'shock', base: 'base', vol: 'vol', add: 'add', remove: 'remove', reset: 'reset', новость: 'shock', цена: 'base', размах: 'vol', добавить: 'add', снять: 'remove', сброс: 'reset' };
+
+/** Runs one editor command (`shock GNG +20`); returns the line to show the editor. */
+export async function runMarketEdit(shell, args) {
+  const op = EDIT_OPS[(args[0] ?? '').toLowerCase()];
+  if (!op || !args[1]) return { error: true, text: 'Формат: shock | base | vol | add | remove | reset <ТИКЕР> …  (marketedit — подсказка)' };
+
+  const body = { op, asset: args[1] };
+  if (op === 'shock' || op === 'base' || op === 'vol') {
+    body.value = Number(String(args[2] ?? '').replace(',', '.').replace('%', ''));
+    if (!Number.isFinite(body.value)) return { error: true, text: 'Нужно число.' };
+  } else if (op === 'add') {
+    Object.assign(body, { name: args[2], group: args[3], kind: args[4], base: Number(args[5]), vol: args[6] === undefined ? 0.3 : Number(args[6]) });
+    if (!body.name || !Number.isFinite(body.base)) return { error: true, text: 'add <ТИКЕР> "Название" <группа> <вид> <цена> [размах]' };
+  }
+
+  const result = await shell.backend.call('POST', '/api/market/edit', body);
+  if (result.error) return { error: true, text: errorText(result.error) };
+  return { error: false, text: `Готово: ${result.summary}`, assets: result.assets };
+}
+
+export async function cmdMarketEdit(shell, args) {
+  if (!args.length || args[0] === 'list') {
+    const result = await shell.backend.call('GET', '/api/market');
+    if (result.error) {
+      shell.println(c.red(errorText(result.error)));
+      return;
+    }
+    if (!result.editor) {
+      shell.println(c.red(errorText('forbidden')));
+      return;
+    }
+    shell.println(c.bold(c.red('Редактор рынка')));
+    for (const line of EDIT_HELP) shell.println(`  ${c.amber(line.slice(0, 30))}${c.grey(line.slice(30))}`);
+    shell.println('');
+    shell.println(c.grey(`  Сейчас на бирже ${result.assets.length} компаний: ${result.assets.map((asset) => asset.id).join(' ')}`));
+    shell.println(c.grey('  Правки можно делать и прямо на экране биржи: клавиша E.'));
+    return;
+  }
+  const outcome = await runMarketEdit(shell, args);
+  shell.println(outcome.error ? c.red(outcome.text) : c.green(outcome.text));
+}
+
+/* ---------- trade journal ---------- */
+
+const clock = (t) => new Date(t).toLocaleTimeString('ru-RU', { hour12: false });
+
+// "who bought or sold what, how many, at what price and where the price stood against six minutes ago"
+function tradeRow(trade, me, selectedId) {
+  const mine = trade.name.toLowerCase() === me.toLowerCase();
+  const time = clock(trade.t);
+  const name = pad(clip(trade.name, 8), 8);
+  const rest = `${pad(trade.asset, 5)}${pad(`×${trade.qty}`, 6, 'right')}${pad(quote(trade.price), 9, 'right')}`;
+  const pct = pad(percent(trade.pct), 8, 'right');
+  const symbol = trade.side === 'buy' ? '▲' : '▼';
+  if (trade.asset !== selectedId && !mine) return c.grey(`${time} ${name} ${symbol}${rest}${pct}`);
+  const arrow = trade.side === 'buy' ? c.green(symbol) : c.red(symbol);
+  return `${c.grey(time)} ${mine ? c.bold(c.bright(name)) : name} ${arrow}${rest}${toneOf(trade.pct)(pct)}`;
+}
+
+const tradeHeader = c.grey('ВРЕМЯ    КТО       БИРЖА   КОЛ     ЦЕНА     Δ6М');
+
 /* ---------- market screen ---------- */
 
 export function playMarket(shell) {
@@ -104,23 +184,25 @@ export function playMarket(shell) {
     const { cols } = view;
     const compact = cols < 64;
     const roomy = view.rows >= 46; // room for thin lines between the corporations
+    const panelWidth = cols >= 112 ? 48 : 0; // the trade journal sits on the right when the screen is wide
+    let showJournal = false; // on narrow screens H swaps the chart for the journal
 
     const heldOf = (id) => data?.holdings.find((item) => item.asset === id) ?? { qty: 0, cost: 0 };
 
     function render() {
       const lines = [];
-      const width = cols;
+      const width = cols - (panelWidth ? panelWidth + 2 : 0);
 
       // header
       const title = ` ${c.bold(c.red('◈ БИРЖА АНКО'))} ${c.grey('//')} ${c.red('крипто-енды')}`;
       const balance = data ? `${c.grey('баланс ')}${c.bold(c.amber(money(data.balance)))} ` : '';
-      lines.push(`${title}${' '.repeat(Math.max(1, width - visibleLength(title) - visibleLength(balance)))}${balance}`);
+      lines.push(`${title}${' '.repeat(Math.max(1, cols - visibleLength(title) - visibleLength(balance)))}${balance}`);
       if (data) {
         const wait = Math.max(0, data.nextIn - (Date.now() - fetchedAt));
         const filled = Math.max(0, Math.min(10, Math.round(10 - (wait / data.tickMs) * 10)));
-        lines.push(c.red('━'.repeat(width - 14)) + c.grey(` тик ${c.red('▰'.repeat(filled))}${'▱'.repeat(10 - filled)}`).slice(0, 200));
+        lines.push(c.red('━'.repeat(cols - 14)) + c.grey(` тик ${c.red('▰'.repeat(filled))}${'▱'.repeat(10 - filled)}`).slice(0, 200));
       } else {
-        lines.push(c.red('━'.repeat(width)));
+        lines.push(c.red('━'.repeat(cols)));
       }
 
       if (!data) {
@@ -131,8 +213,8 @@ export function playMarket(shell) {
       // price list
       lines.push(
         compact
-          ? c.grey(` ${pad('', 2)}${pad('ТИКЕР', 6)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 8, 'right')}  ТРЕНД        ПОРТФ.`)
-          : c.grey(`   ${pad('ТИКЕР', 6)}${pad('АКТИВ', 22)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 9, 'right')}   ТРЕНД          ПОРТФЕЛЬ`)
+          ? c.grey(` ${pad('', 2)}${pad('ТИКЕР', 6)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 8, 'right')}  ТРЕНД        СПР ПОРТФ.`)
+          : c.grey(`   ${pad('ТИКЕР', 6)}${pad('АКТИВ', 22)}${pad('ЦЕНА', 9, 'right')}${pad('Δ6м', 9, 'right')}   ТРЕНД          СПРОС  ПОРТФЕЛЬ`)
       );
       data.assets.forEach((asset, index) => {
         if (roomy && index > 0 && asset.group !== data.assets[index - 1].group) lines.push(c.grey(` ${'┄'.repeat(width - 2)}`));
@@ -144,8 +226,8 @@ export function playMarket(shell) {
         const trend = spark(asset.history, compact ? 8 : 14);
         const position = held.qty ? `${c.bright(String(held.qty))}${c.grey(' шт')}` : c.grey('—');
         const row = compact
-          ? ` ${mark} ${ticker}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 8, 'right'))}  ${trend}  ${position}`
-          : ` ${mark} ${ticker}${pad(index === selected ? c.bright(asset.name) : asset.name, 22)}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 9, 'right'))}   ${trend}   ${position}`;
+          ? ` ${mark} ${ticker}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 8, 'right'))}  ${trend}  ${pad(demandMark(asset.demand), 3)} ${position}`
+          : ` ${mark} ${ticker}${pad(index === selected ? c.bright(asset.name) : asset.name, 22)}${pad(quote(asset.price), 9, 'right')}${toneOf(change)(pad(percent(change), 9, 'right'))}   ${trend}   ${pad(demandMark(asset.demand), 5)}  ${position}`;
         lines.push(row);
       });
 
@@ -155,25 +237,49 @@ export function playMarket(shell) {
       const high = Math.max(...asset.history);
       const low = Math.min(...asset.history);
       lines.push(c.red('─'.repeat(width)));
-      lines.push(` ${c.bold(sgr(groupTone(asset.group), asset.id))} ${c.grey('·')} ${asset.name} ${c.grey(`(${asset.group} · ${asset.kind})`)}   ${c.grey('макс')} ${quote(high)}  ${c.grey('мин')} ${quote(low)}`);
+      lines.push(` ${c.bold(sgr(groupTone(asset.group), asset.id))} ${c.grey('·')} ${asset.name} ${c.grey(`(${asset.group} · ${asset.kind})`)}   ${c.grey('макс')} ${quote(high)}  ${c.grey('мин')} ${quote(low)}   ${c.grey('спрос')} ${demandMark(asset.demand)} ${toneOf(asset.demand)(percent(asset.demand * 100))}`);
       if (held.qty) {
         const value = Math.floor(asset.price * held.qty);
         lines.push(` ${c.grey('позиция')} ${held.qty} шт · ${c.grey('вложено')} ${money(held.cost)} · ${c.grey('сейчас')} ${money(value)} · ${toneOf(value - held.cost)(signed(value - held.cost) + ' ' + UNIT)}`);
       } else {
-        lines.push(c.grey(` позиции нет · комиссия ${Math.round(data.fee * 100)}% с каждой сделки`));
+        lines.push(c.grey(` позиции нет · комиссия ${Math.round(data.fee * 100)}% · покупки двигают цену вверх, продажи — вниз`));
       }
 
       const chartHeight = Math.max(4, view.rows - lines.length - CHART_HINTS - 2);
-      const axis = 8;
-      const chart = barChart(asset.history, width - axis - 2, chartHeight, { min: low * 0.985, max: high * 1.015, tone: asset.price >= asset.history[0] ? '32' : '31' });
-      chart.forEach((line, index) => {
-        const label = index === 0 ? quote(high) : index === chart.length - 1 ? quote(low) : index === Math.floor(chart.length / 2) ? quote((high + low) / 2) : '';
-        lines.push(`${c.grey(pad(label, axis, 'right'))} ${c.red('│')}${line}`);
-      });
-      lines.push(`${' '.repeat(axis)} ${c.red('└' + '─'.repeat(width - axis - 2))}`);
+      if (showJournal && !panelWidth) {
+        lines.push(c.red('─'.repeat(width)), ` ${c.bold(c.red('ИСТОРИЯ СДЕЛОК'))}  ${c.grey('все игроки')}`, ` ${tradeHeader}`);
+        const room = view.rows - lines.length - CHART_HINTS + 1;
+        for (const trade of (data.trades ?? []).slice(0, Math.max(3, room))) lines.push(` ${tradeRow(trade, shell.user.name, asset.id)}`);
+        if (!(data.trades ?? []).length) lines.push(c.grey(' пока никто не торговал'));
+        while (lines.length < view.rows - CHART_HINTS + 1) lines.push('');
+      } else {
+        const axis = 8;
+        const chart = barChart(asset.history, width - axis - 2, chartHeight, { min: low * 0.985, max: high * 1.015, tone: asset.price >= asset.history[0] ? '32' : '31' });
+        chart.forEach((line, index) => {
+          const label = index === 0 ? quote(high) : index === chart.length - 1 ? quote(low) : index === Math.floor(chart.length / 2) ? quote((high + low) / 2) : '';
+          lines.push(`${c.grey(pad(label, axis, 'right'))} ${c.red('│')}${line}`);
+        });
+        lines.push(`${' '.repeat(axis)} ${c.red('└' + '─'.repeat(width - axis - 2))}`);
+      }
+
+      // the journal on the right of the whole screen
+      if (panelWidth) {
+        const column = width + 3;
+        const panel = [c.bold(c.red('ИСТОРИЯ СДЕЛОК')) + c.grey('  кто, сколько, по какой цене'), c.red('─'.repeat(panelWidth)), tradeHeader];
+        const trades = data.trades ?? [];
+        for (const trade of trades) panel.push(tradeRow(trade, shell.user.name, asset.id));
+        if (!trades.length) panel.push(c.grey('пока никто не торговал'));
+        const last = lines.length - 1;
+        panel.slice(0, last - 1).forEach((text, i) => {
+          lines[i + 2] += at(i + 3, column) + text;
+        });
+      }
 
       // footer
-      if (order) {
+      if (order?.side === 'edit') {
+        lines.push(` ${c.bold(c.red('РЕДАКТОР РЫНКА ›'))} ${order.text}${c.inverse(' ')}`);
+        lines.push(c.grey(' shock GNG +20 · base SUBE 150 · vol ENDI 0.9 · add NEWC "Имя" Группа акции 50 · remove NEWC · reset GNG · Esc'));
+      } else if (order) {
         const qty = Number(order.text || 0);
         const total = order.side === 'buy' ? Math.ceil(asset.price * qty * (1 + data.fee)) : Math.floor(asset.price * qty * (1 - data.fee));
         const verb = order.side === 'buy' ? c.green('КУПИТЬ') : c.red('ПРОДАТЬ');
@@ -182,7 +288,7 @@ export function playMarket(shell) {
         lines.push(c.grey(` цифры — количество · M — максимум (${fmt(max)}) · Enter — подтвердить · Esc — отмена`));
       } else {
         lines.push(` ${note}`);
-        lines.push(c.grey(compact ? ' ↑↓ выбор · B куп. · S прод. · Esc' : ' ↑↓ выбор · B купить · S продать · W кошелёк · Esc выход'));
+        lines.push(c.grey(compact ? ' ↑↓ · B куп. · S прод. · H история · Esc' : ` ↑↓ выбор · B купить · S продать${panelWidth ? '' : ' · H история сделок'}${data.editor ? ' · E править рынок' : ''} · Esc выход`));
       }
       return lines;
     }
@@ -232,6 +338,22 @@ export function playMarket(shell) {
       paint();
     }
 
+    async function runEdit() {
+      const text = order.text.trim();
+      order = null;
+      if (!text) {
+        paint();
+        return;
+      }
+      note = c.grey('Применяю…');
+      paint();
+      const args = [...text.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
+      const outcome = await runMarketEdit(shell, args);
+      note = outcome.error ? c.red(outcome.text) : c.green(outcome.text);
+      void refresh();
+      paint();
+    }
+
     function finish() {
       clearInterval(timer);
       clearInterval(clock);
@@ -246,6 +368,17 @@ export function playMarket(shell) {
       }
       const asset = data.assets[selected];
       const held = heldOf(asset.id);
+
+      if (order?.side === 'edit') {
+        if (key === ESC) order = null;
+        else if (isEnter(key)) {
+          void runEdit();
+          return;
+        } else if (key === '\x7f' || key === '\b') order.text = order.text.slice(0, -1);
+        else if (key.length === 1 && key >= ' ' && order.text.length < 90) order.text += key;
+        paint();
+        return;
+      }
 
       if (order) {
         if (key === ESC) order = null;
@@ -266,10 +399,12 @@ export function playMarket(shell) {
       else if (key === KEY.up || /^[wцWЦ]$/.test(key)) selected = (selected + data.assets.length - 1) % data.assets.length;
       else if (key === KEY.down || key === '\t') selected = (selected + 1) % data.assets.length;
       else if (/^[bBиИ]$/.test(key) && !busy) order = { side: 'buy', text: '' };
+      else if (/^[eEуУ]$/.test(key) && data.editor) order = { side: 'edit', text: '' };
       else if (/^[sSыЫ]$/.test(key) && !busy) {
         if (held.qty) order = { side: 'sell', text: '' };
         else note = c.red('У вас нет этих бумаг.');
-      } else if (/^[1-9]$/.test(key)) selected = Math.min(data.assets.length - 1, Number(key) - 1);
+      } else if (/^[hHрР]$/.test(key)) showJournal = !showJournal;
+      else if (/^[1-9]$/.test(key)) selected = Math.min(data.assets.length - 1, Number(key) - 1);
       shell.sound?.tick?.();
       paint();
     }

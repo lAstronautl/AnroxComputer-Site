@@ -12,7 +12,7 @@ import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
 import { playCasino } from './casino';
 import { playMap } from './mapview';
-import { claimDole, playMarket, showTop, showWallet } from './market';
+import { claimDole, cmdMarketEdit, playMarket, showTop, showWallet } from './market';
 import { ConsoleSound } from './sound';
 import { createKnob } from './knob';
 import { LOGO, LOGO_SMALL, LOGO_WIDTH } from './logo';
@@ -572,6 +572,11 @@ class Shell {
 
     if (command.auth && !this.requireLogin()) return Promise.resolve();
 
+    if (command.minLevel && (this.user?.level ?? 0) < command.minLevel) {
+      this.println(c.red(`ДОСТУП ЗАПРЕЩЁН. Требуется допуск: ${this.levelName(command.minLevel)} (L${command.minLevel}).`));
+      return Promise.resolve();
+    }
+
     if (command.admin && !this.isAdmin()) {
       this.println(c.red(`ДОСТУП ЗАПРЕЩЁН. Требуется допуск: ${this.levelName(this.adminLevel)} (L${this.adminLevel}).`));
       return Promise.resolve();
@@ -749,6 +754,12 @@ class Shell {
         auth: true,
         run: () => playCasino(this)
       },
+      marketedit: {
+        desc: 'править рынок: новости, цены, новые компании',
+        auth: true,
+        minLevel: 999,
+        run: (args) => cmdMarketEdit(this, args)
+      },
       top: {
         desc: 'рейтинг самых богатых сотрудников',
         auth: true,
@@ -799,6 +810,8 @@ class Shell {
     commands.казино = commands.casino;
     commands.рейтинг = commands.top;
     commands.пособие = commands.dole;
+    commands.рынок = commands.marketedit;
+    commands.mkt = commands.marketedit;
     commands.exit = commands.logout;
     commands['?'] = commands.help;
     return commands;
@@ -806,6 +819,7 @@ class Shell {
 
   /** The position (level) from which a command is available. */
   commandLevel(command) {
+    if (command.minLevel) return command.minLevel;
     if (command.admin) return this.adminLevel;
     return command.auth ? 1 : 0;
   }

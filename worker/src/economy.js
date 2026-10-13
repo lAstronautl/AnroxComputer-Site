@@ -10,6 +10,10 @@ export const TICK_MS = 5000; // как часто меняются цены
 export const HISTORY_TICKS = 72; // сколько тиков истории отдаём клиенту (6 минут)
 export const DOLE_LIMIT = 100; // пособие выдаётся тем, у кого меньше
 export const DOLE_COOLDOWN = 10 * 60 * 1000;
+export const LIQUIDITY = 4000; // сделка на столько КЕ двигает цену примерно на 100% (на деле — на долю этого)
+export const DEMAND_HALF_MS = 4 * 60 * 1000; // за это время влияние спроса ослабевает вдвое
+export const MAX_PRESSURE = 0.7; // цена от спроса меняется не больше чем в e^0.7 ≈ 2 раза
+export const MAX_IMPACT = 0.35; // одна сделка двигает цену не больше чем на ≈ 42%
 export const CRASH_RATE = 0.09; // рост множителя «Взлёта» в секунду (экспонента)
 export const CRASH_GRACE_MS = 400; // запас на задержку сети: нажатие «Забрать» засчитывается, если успело до обвала с учётом пинга
 
@@ -75,16 +79,48 @@ export function priceAt(asset, tick, seed = '') {
 
 export const tickOf = (now) => Math.floor(now / TICK_MS);
 
-export function snapshot(now, seed) {
+/**
+ * Давление спроса на момент `at`: сумма влияний сделок (покупка +, продажа −), каждое затухает со временем.
+ * events — [{ t, impact }] по одному активу. Цена = базовая цена × e^давление.
+ */
+export function pressureAt(events, at) {
+  let sum = 0;
+  for (const event of events) {
+    if (event.t <= at) sum += event.impact * 0.5 ** ((at - event.t) / DEMAND_HALF_MS);
+  }
+  return Math.max(-MAX_PRESSURE, Math.min(MAX_PRESSURE, sum));
+}
+
+export function marketPrice(asset, tick, seed, events, at) {
+  return Math.max(1, Math.round(priceAt(asset, tick, seed) * Math.exp(pressureAt(events ?? [], at)) * 100) / 100);
+}
+
+// насколько сделка на сумму `value` сдвинет цену (с небольшим случайным разбросом)
+export function tradeImpact(value, rng = randomFloat) {
+  return Math.min(MAX_IMPACT, (value / LIQUIDITY) * (0.85 + rng() * 0.3));
+}
+
+export function snapshot(now, seed, demand = {}, assets = ASSETS) {
   const tick = tickOf(now);
   return {
     tick,
     tickMs: TICK_MS,
     nextIn: TICK_MS - (now % TICK_MS),
-    assets: ASSETS.map((asset) => {
+    assets: assets.map((asset) => {
+      const events = demand[asset.id] ?? [];
       const history = [];
-      for (let k = tick - HISTORY_TICKS + 1; k <= tick; k += 1) history.push(priceAt(asset, k, seed));
-      return { id: asset.id, name: asset.name, group: asset.group, kind: asset.kind, price: history[history.length - 1], history };
+      for (let k = tick - HISTORY_TICKS + 1; k <= tick; k += 1) {
+        history.push(marketPrice(asset, k, seed, events, k === tick ? now : k * TICK_MS));
+      }
+      return {
+        id: asset.id,
+        name: asset.name,
+        group: asset.group,
+        kind: asset.kind,
+        price: history[history.length - 1],
+        demand: Math.round(pressureAt(events, now) * 1000) / 1000,
+        history
+      };
     })
   };
 }
