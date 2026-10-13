@@ -1508,7 +1508,6 @@ class Shell {
 
   cmdFlashbang() {
     this.println(c.red('ВНИМАНИЕ: светошумовая граната!'));
-    this.println(c.grey('Звук громкий, экран ярко вспыхнет. Закройте глаза.'));
 
     const flash = document.createElement('div');
     flash.className = 'rp-flash';
