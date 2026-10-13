@@ -1549,10 +1549,18 @@ class Shell {
     this.println(c.red(`── ${article.title} ${'─'.repeat(Math.max(2, 40 - [...article.title].length))}`));
     if (article.categories) this.println(c.grey(`Раздел: ${article.categories}`));
     this.println('');
-    if (article.zones?.length) this.println(c.amber(`Интерактивная карта: map ${this.articles.indexOf(article) + 1}`));
+    if (article.zones?.length) this.println(c.amber('Интерактивная карта: есть (в конце статьи можно открыть, или командой map)'));
     this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: схема или изображение)'));
     this.println(c.red('─'.repeat(44)));
     this.log({ action: 'article', target: article.title });
+
+    // the map belongs to the article: offer it right away instead of leaving a hint to type
+    if (article.zones?.length) {
+      const answer = await this.ask(c.amber('Открыть интерактивную карту? [Enter — да, н — нет]: '));
+      if (answer != null && !['н', 'нет', 'n', 'no'].includes(answer.trim().toLowerCase())) {
+        await playMap(this, article);
+      }
+    }
   }
 
   async cmdExplosionEgg() {
