@@ -15,6 +15,7 @@ const HISTORY_TICKS = 72; // сколько тиков истории отдаё
 const DOLE_LIMIT = 100; // пособие выдаётся тем, у кого меньше
 const DOLE_COOLDOWN = 10 * 60 * 1000;
 const CRASH_RATE = 0.09; // рост множителя «Взлёта» в секунду (экспонента)
+const CRASH_GRACE_MS = 400; // запас на задержку сети: нажатие «Забрать» засчитывается, если успело до обвала с учётом пинга
 
 // vol — размах колебаний, noise — «шум» отдельных тиков
 const ASSETS = [
@@ -158,7 +159,7 @@ function rollDice(mode, target, rng = randomFloat) {
 // «Взлёт»: множитель растёт, пока не «рухнет»; игрок должен успеть забрать выигрыш
 function crashPoint(rng = randomFloat) {
   const r = rng();
-  return Math.min(500, Math.max(1, Math.floor((97 / (1 - r))) / 100));
+  return Math.min(500, Math.max(1, Math.floor(93 / (1 - r)) / 100)); // 93 + запас на пинг ≈ 96% отдачи
 }
 
 const crashMultiplier = (elapsedMs) => Math.floor(Math.exp((CRASH_RATE * elapsedMs) / 1000) * 100) / 100;
@@ -625,12 +626,22 @@ async function economyRoute(path, method, request, env, row) {
     await ensureEconomy(env);
     const round = await env.DB.prepare('SELECT bet, crash, started FROM rounds WHERE user_key = ?').bind(row.key).first();
     if (!round) throw new ApiError(409, 'no-round');
-    const multiplier = crashMultiplier(now - round.started);
-    if (multiplier >= round.crash) {
+
+    // the plane counts as crashed only once the network delay allowance has passed too,
+    // so a press that left the player's screen before the crash is not lost to ping
+    const elapsed = now - round.started;
+    const high = crashMultiplier(elapsed);
+    const low = crashMultiplier(Math.max(0, elapsed - CRASH_GRACE_MS));
+    if (low >= round.crash) {
       await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
       return { crashed: true, at: round.crash, bet: round.bet, balance: await balanceOf(env, row.key) };
     }
-    if (game === 'crash/status') return { alive: true, multiplier };
+    if (game === 'crash/status') return { alive: true };
+
+    // the player reports the multiplier on their screen; it may only lie between "a moment ago" and "now"
+    const claimed = Number(body.at);
+    const asked = Number.isFinite(claimed) ? claimed : low;
+    const multiplier = Math.max(1, Math.min(Math.max(low, Math.min(asked, high)), Math.floor((round.crash - 0.01) * 100) / 100));
 
     const taken = await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
     if (!taken.meta.changes) throw new ApiError(409, 'no-round');

@@ -13,6 +13,7 @@ import {
   MAX_BET,
   ROULETTE_BETS,
   START_BALANCE,
+  CRASH_GRACE_MS,
   crashMultiplier,
   crashPoint,
   priceAt,
@@ -478,12 +479,22 @@ async function economyRoute(path, method, request, env, row) {
     await ensureEconomy(env);
     const round = await env.DB.prepare('SELECT bet, crash, started FROM rounds WHERE user_key = ?').bind(row.key).first();
     if (!round) throw new ApiError(409, 'no-round');
-    const multiplier = crashMultiplier(now - round.started);
-    if (multiplier >= round.crash) {
+
+    // the plane counts as crashed only once the network delay allowance has passed too,
+    // so a press that left the player's screen before the crash is not lost to ping
+    const elapsed = now - round.started;
+    const high = crashMultiplier(elapsed);
+    const low = crashMultiplier(Math.max(0, elapsed - CRASH_GRACE_MS));
+    if (low >= round.crash) {
       await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
       return { crashed: true, at: round.crash, bet: round.bet, balance: await balanceOf(env, row.key) };
     }
-    if (game === 'crash/status') return { alive: true, multiplier };
+    if (game === 'crash/status') return { alive: true };
+
+    // the player reports the multiplier on their screen; it may only lie between "a moment ago" and "now"
+    const claimed = Number(body.at);
+    const asked = Number.isFinite(claimed) ? claimed : low;
+    const multiplier = Math.max(1, Math.min(Math.max(low, Math.min(asked, high)), Math.floor((round.crash - 0.01) * 100) / 100));
 
     const taken = await env.DB.prepare('DELETE FROM rounds WHERE user_key = ?').bind(row.key).run();
     if (!taken.meta.changes) throw new ApiError(409, 'no-round');

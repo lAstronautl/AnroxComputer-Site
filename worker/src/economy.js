@@ -11,6 +11,7 @@ export const HISTORY_TICKS = 72; // сколько тиков истории о�
 export const DOLE_LIMIT = 100; // пособие выдаётся тем, у кого меньше
 export const DOLE_COOLDOWN = 10 * 60 * 1000;
 export const CRASH_RATE = 0.09; // рост множителя «Взлёта» в секунду (экспонента)
+export const CRASH_GRACE_MS = 400; // запас на задержку сети: нажатие «Забрать» засчитывается, если успело до обвала с учётом пинга
 
 // vol — размах колебаний, noise — «шум» отдельных тиков
 export const ASSETS = [
@@ -154,7 +155,7 @@ export function rollDice(mode, target, rng = randomFloat) {
 // «Взлёт»: множитель растёт, пока не «рухнет»; игрок должен успеть забрать выигрыш
 export function crashPoint(rng = randomFloat) {
   const r = rng();
-  return Math.min(500, Math.max(1, Math.floor((97 / (1 - r))) / 100));
+  return Math.min(500, Math.max(1, Math.floor(93 / (1 - r)) / 100)); // 93 + запас на пинг ≈ 96% отдачи
 }
 
 export const crashMultiplier = (elapsedMs) => Math.floor(Math.exp((CRASH_RATE * elapsedMs) / 1000) * 100) / 100;

@@ -606,7 +606,7 @@ export function playCasino(shell) {
           repaint();
         });
         // the server tells when the round has crashed; the picture runs on the local clock in between
-        every(600, async () => {
+        every(250, async () => {
           if (phase !== 'flying' || polling) return;
           polling = true;
           const status = await api('crash/status');
@@ -625,7 +625,7 @@ export function playCasino(shell) {
       }
 
       async function cashOut() {
-        const answer = await api('crash/cashout');
+        const answer = await api('crash/cashout', { at: Math.floor(multiplierAt(Date.now() - startedAt) * 100) / 100 });
         if (phase !== 'flying') return;
         phase = 'over';
         if (answer.won) outcome = { won: true, multiplier: answer.multiplier, payout: answer.payout, bet: answer.bet, crashAt: answer.crashAt };
