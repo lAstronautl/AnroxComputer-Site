@@ -142,19 +142,29 @@ function normalize(path) {
 export function buildFs(files) {
   const byPath = new Map();
   const dirs = new Set(['/']);
+  const dirByLower = new Map([['/', '/']]);
 
-  for (const file of files) {
-    const path = normalize(file.path);
-    byPath.set(path.toLowerCase(), { ...file, path });
+  const add = (list) => {
+    for (const file of list) {
+      const path = normalize(file.path);
+      byPath.set(path.toLowerCase(), { ...file, path });
 
-    const parts = path.split('/').filter(Boolean);
-    for (let i = 1; i < parts.length; i += 1) dirs.add(`/${parts.slice(0, i).join('/')}`);
-  }
-
-  const dirByLower = new Map([...dirs].map((d) => [d.toLowerCase(), d]));
+      const parts = path.split('/').filter(Boolean);
+      for (let i = 1; i < parts.length; i += 1) {
+        const dir = `/${parts.slice(0, i).join('/')}`;
+        dirs.add(dir);
+        dirByLower.set(dir.toLowerCase(), dir);
+      }
+    }
+  };
+  add(files);
 
   return {
-    files: [...byPath.values()],
+    /** Mounts more files (the site's posts arrive after the page has loaded). */
+    add,
+    get files() {
+      return [...byPath.values()];
+    },
     resolve(cwd, input) {
       const raw = (input ?? '').trim();
       if (!raw || raw === '~') return '/';

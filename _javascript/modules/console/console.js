@@ -41,6 +41,18 @@ const UNITS = /\x1b\[[0-9;?]*[A-Za-z~]|\x1b[\s\S]|[\s\S]/gu; // eslint-disable-l
 
 
 
+const TRANSLIT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+
+// a file or folder name that is easy to type: latin letters, digits and dashes
+function slugify(text) {
+  return String(text ?? '')
+    .toLowerCase()
+    .replace(/[а-яё]/g, (letter) => TRANSLIT[letter])
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 class Shell {
   constructor(data) {
     this.data = data;
@@ -698,16 +710,6 @@ class Shell {
         auth: true,
         run: () => this.cmdLog()
       },
-      articles: {
-        desc: 'статьи архива АнКо',
-        auth: true,
-        run: () => this.cmdArticles()
-      },
-      read: {
-        desc: 'прочитать статью (read <номер|слово>)',
-        auth: true,
-        run: (args) => this.cmdRead(args)
-      },
       explosionegg: {
         hidden: true, // secret: not in help, not in tab completion
         run: () => this.cmdExplosionEgg()
@@ -715,11 +717,6 @@ class Shell {
       flashbang: {
         hidden: true, // secret: not in help, not in tab completion
         run: () => this.cmdFlashbang()
-      },
-      map: {
-        desc: 'интерактивная карта (map [номер статьи])',
-        auth: true,
-        run: (args) => this.cmdMap(args)
       },
       site: {
         desc: 'вернуться на сайт',
@@ -748,7 +745,6 @@ class Shell {
     commands.find = commands.search;
     commands.cls = commands.clear;
     commands.home = commands.site;
-    commands.карта = commands.map;
     commands.сайт = commands.site;
     commands.useradd = commands.adduser;
     commands.unlock = commands.auth;
@@ -764,8 +760,6 @@ class Shell {
     commands.перевод = commands.transfer;
     commands.уволить = commands.fire;
     commands.флешбенг = commands.flashbang;
-    commands.posts = commands.articles;
-    commands.статьи = commands.articles;
     commands.exit = commands.logout;
     commands['?'] = commands.help;
     return commands;
@@ -935,9 +929,21 @@ class Shell {
     }
 
     this.println(c.red(`── ${file.title ?? file.path} ${'─'.repeat(Math.max(2, 40 - [...(file.title ?? file.path)].length))}`));
-    this.println(String(file.text ?? '').trimEnd());
+    const body = String(file.text ?? '').trimEnd();
+    this.println(file.wrap ? this.wrap(body) : body);
     this.println(c.red('─'.repeat(44)));
     this.log({ action: 'read', target: file.path });
+
+    // a post with an interactive map: the map opens right from the file
+    if (file.zones?.length) return this.offerMap(file);
+    return undefined;
+  }
+
+  async offerMap(file) {
+    const answer = await this.ask(c.amber('Открыть интерактивную карту? [Enter — да, н — нет]: '));
+    if (answer != null && !['н', 'нет', 'n', 'no'].includes(answer.trim().toLowerCase())) {
+      await playMap(this, file);
+    }
   }
 
   cmdSearch(args) {
@@ -1427,56 +1433,45 @@ class Shell {
 
   /* ---------- site articles ---------- */
 
-  async loadArticles() {
-    if (this.articles) return this.articles;
-    if (!this.articlesUrl) return null;
+  /** The site's posts become ordinary files: /posts/<category>/<name>.txt, open them with cat. */
+  async mountArticles() {
+    if (this.articles || !this.articlesUrl) return;
 
     try {
       const response = await fetch(this.articlesUrl);
       if (!response.ok) throw new Error(String(response.status));
       this.articles = await response.json();
     } catch {
-      this.println(c.red('Архив недоступен: не удалось загрузить статьи.'));
-      return null;
-    }
-    return this.articles;
-  }
-
-  async pickArticle(args, usage) {
-    const query = args.join(' ').trim();
-    if (!query) {
-      this.println(c.grey(`Использование: ${usage}  (список — articles)`));
-      return null;
+      return; // the posts stay out of the file system; everything else keeps working
     }
 
-    const list = await this.loadArticles();
-    if (!list) return null;
+    const decoder = document.createElement('textarea');
+    const taken = new Set();
+    const files = this.articles.map((article) => {
+      const category = slugify((article.categories ?? '').split(',')[0]) || 'other';
+      let name = slugify(article.title) || 'post';
+      while (taken.has(`${category}/${name}`)) name += '-2';
+      taken.add(`${category}/${name}`);
 
-    if (/^\d+$/.test(query)) {
-      const byNumber = list[Number(query) - 1];
-      if (!byNumber) this.println(c.red('Нет статьи с таким номером.'));
-      return byNumber ?? null;
-    }
+      const text = article.text
+        .split('¶')
+        .map((line) => {
+          decoder.innerHTML = line;
+          return decoder.value.replace(/\s+/g, ' ').trim();
+        })
+        .filter(Boolean)
+        .join('\n\n');
 
-    const needle = query.toLowerCase();
-    const hits = list.filter((article) => article.title.toLowerCase().includes(needle));
-    if (hits.length === 1) return hits[0];
-
-    this.println(hits.length === 0 ? c.red('Статья не найдена.') : c.red('Подходит несколько статей, уточните:'));
-    for (const hit of hits) this.println(`  ${c.bright(String(list.indexOf(hit) + 1))}. ${hit.title}`);
-    return null;
-  }
-
-  async cmdArticles() {
-    const list = await this.loadArticles();
-    if (!list) return;
-
-    this.println(c.bold(c.red(`Архив АнКо — статей: ${list.length}`)));
-    list.forEach((article, i) => {
-      const where = (article.categories ? c.grey(`  [${article.categories}]`) : '') + (article.zones?.length ? c.amber('  [карта]') : '');
-      this.println(`  ${c.bright(String(i + 1).padStart(2))}. ${article.title}${where}`);
+      return {
+        path: `/posts/${category}/${name}.txt`,
+        level: 0,
+        title: article.title,
+        text: text || '(текст записи — только на сайте: схема или изображение)',
+        zones: article.zones,
+        wrap: true
+      };
     });
-    this.println(c.grey('read <номер|слово> — прочитать статью.'));
+    this.fs.add(files);
   }
 
   /** Word wrap to the terminal width, so words are not cut in the middle. */
@@ -1499,68 +1494,6 @@ class Shell {
         return lines.join('\n');
       })
       .join('\n');
-  }
-
-  async cmdMap(args) {
-    const list = await this.loadArticles();
-    if (!list) return;
-
-    const withMaps = list.filter((article) => article.zones?.length);
-    if (withMaps.length === 0) {
-      this.println(c.grey('В архиве нет интерактивных карт.'));
-      return;
-    }
-
-    if (args.length > 0) {
-      const article = await this.pickArticle(args, 'map <номер|слово>');
-      if (!article) return;
-      if (!article.zones?.length) {
-        this.println(c.red('У этой статьи нет интерактивной карты.'));
-        return;
-      }
-      await playMap(this, article);
-      return;
-    }
-
-    if (withMaps.length === 1) {
-      await playMap(this, withMaps[0]);
-      return;
-    }
-
-    this.println(c.bold(c.red('Интерактивные карты:')));
-    for (const item of withMaps) this.println(`  ${c.bright(String(list.indexOf(item) + 1).padStart(2))}. ${item.title}`);
-    this.println(c.grey('map <номер> — открыть карту.'));
-  }
-
-  async cmdRead(args) {
-    const article = await this.pickArticle(args, 'read <номер|слово>');
-    if (!article) return;
-
-    const decoder = document.createElement('textarea');
-    const body = article.text
-      .split('¶')
-      .map((line) => {
-        decoder.innerHTML = line;
-        return decoder.value.replace(/\s+/g, ' ').trim();
-      })
-      .filter(Boolean)
-      .join('\n\n');
-
-    this.println(c.red(`── ${article.title} ${'─'.repeat(Math.max(2, 40 - [...article.title].length))}`));
-    if (article.categories) this.println(c.grey(`Раздел: ${article.categories}`));
-    this.println('');
-    if (article.zones?.length) this.println(c.amber('Интерактивная карта: есть (в конце статьи можно открыть, или командой map)'));
-    this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: схема или изображение)'));
-    this.println(c.red('─'.repeat(44)));
-    this.log({ action: 'article', target: article.title });
-
-    // the map belongs to the article: offer it right away instead of leaving a hint to type
-    if (article.zones?.length) {
-      const answer = await this.ask(c.amber('Открыть интерактивную карту? [Enter — да, н — нет]: '));
-      if (answer != null && !['н', 'нет', 'n', 'no'].includes(answer.trim().toLowerCase())) {
-        await playMap(this, article);
-      }
-    }
   }
 
   async cmdExplosionEgg() {
@@ -1718,6 +1651,7 @@ export async function initConsole() {
   const sound = new ConsoleSound({ startUrl: root.dataset.soundStart, loopUrl: root.dataset.soundLoop });
   shell.sound = sound;
   shell.articlesUrl = root.dataset.articles ?? '';
+  void shell.mountArticles();
   shell.homeUrl = root.dataset.home ?? '';
   shell.screen = screen;
   const term = new WTerm(screen, {
