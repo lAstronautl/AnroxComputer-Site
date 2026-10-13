@@ -5,15 +5,15 @@
 
 export const START_BALANCE = 1000;
 export const MAX_BET = 10000;
-export const FEE = 0.01; // комиссия биржи с каждой сделки
+export const FEE = 0.05; // комиссия биржи с каждой сделки (5%)
 export const TICK_MS = 5000; // как часто меняются цены
 export const HISTORY_TICKS = 72; // сколько тиков истории отдаём клиенту (6 минут)
 export const DOLE_LIMIT = 100; // пособие выдаётся тем, у кого меньше
 export const DOLE_COOLDOWN = 10 * 60 * 1000;
-export const LIQUIDITY = 4000; // сделка на столько КЕ двигает цену примерно на 100% (на деле — на долю этого)
+export const LIQUIDITY = 20000; // сделка на столько КЕ двигает цену примерно на 100% (на деле — на долю этого)
 export const DEMAND_HALF_MS = 4 * 60 * 1000; // за это время влияние спроса ослабевает вдвое
 export const MAX_PRESSURE = 0.7; // цена от спроса меняется не больше чем в e^0.7 ≈ 2 раза
-export const MAX_IMPACT = 0.35; // одна сделка двигает цену не больше чем на ≈ 42%
+export const MAX_IMPACT = 0.07; // одна сделка двигает цену не больше чем на ≈ 7%
 export const CRASH_RATE = 0.09; // рост множителя «Взлёта» в секунду (экспонента)
 export const CRASH_GRACE_MS = 400; // запас на задержку сети: нажатие «Забрать» засчитывается, если успело до обвала с учётом пинга
 

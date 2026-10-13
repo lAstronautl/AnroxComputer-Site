@@ -336,7 +336,12 @@ body:has(.console-window) {
   }
 }
 
-/* the map takes the whole screen: lines that scrolled off above it are not shown */
-.rp-console-screen.map-mode .term-scrollback-row {
+/* a fixed console: no scrolling back, text that has left the screen is gone (it also covers full-screen programs) */
+.rp-console-screen .term-scrollback-row {
   display: none;
+}
+
+.rp-console-screen.wterm,
+.rp-console-screen.has-scrollback {
+  overflow: hidden !important;
 }
