@@ -1,0 +1,369 @@
+/*
+ * Console theme (data-mode="console"): the colours are exactly the АнКо theme's (themes/_anco.scss, see base/_base.scss);
+ * these rules only give the whole site a terminal look — monospace type, glowing text,
+ * scanlines, square corners.
+ */
+
+html[data-mode^='console'] {
+  --console-glow-rgb: 240 90 90; /* the АнКо accent, used for the text glow */
+  --console-font: ui-monospace, sfmono-regular, menlo, consolas, 'Liberation Mono', monospace;
+
+  body {
+    text-shadow: 0 0 6px rgb(var(--console-glow-rgb) / 35%);
+  }
+
+  /* monospace everywhere except icon fonts */
+  :is(body, h1, h2, h3, h4, h5, h6, p, li, a, span, div, input, button, textarea, td, th, label, summary, code, pre):not(
+      [class*='fa-']
+    ) {
+    font-family: var(--console-font);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .site-title {
+    text-shadow: 0 0 9px rgb(var(--console-glow-rgb) / 55%);
+    letter-spacing: 0.02em;
+  }
+
+  /* square corners instead of the soft theme look */
+  :is(.card, .btn, input, textarea, details, .post-tag, .tag, img, pre, code, kbd, .prompt-tip, .prompt-info, .prompt-warning, .prompt-danger, #search-wrapper, .rp-console) {
+    border-radius: 2px;
+  }
+
+  /* Bootstrap defaults (blue links, grey icons) that the base theme does not recolour */
+  .btn-link,
+  .btn-link:hover {
+    color: var(--link-color);
+  }
+
+  .category-trigger,
+  .page-link {
+    color: var(--text-muted-color) !important;
+  }
+
+  .card,
+  .card-body,
+  .list-group,
+  .list-group-item,
+  .collapse {
+    color: var(--text-color);
+  }
+
+  /* thin glowing frame instead of shadows */
+  :is(.card, #sidebar, #topbar-wrapper) {
+    box-shadow: 0 0 0 1px rgb(var(--console-glow-rgb) / 22%);
+  }
+
+  /* scanlines + vignette over the whole page; clicks pass through */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(to bottom, rgb(0 0 0 / 0%) 0, rgb(0 0 0 / 0%) 2px, rgb(0 0 0 / 20%) 3px),
+      radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 62%, rgb(0 0 0 / 42%) 100%);
+  }
+
+  ::selection {
+    background: rgb(var(--console-glow-rgb) / 40%);
+    color: #ffffff;
+  }
+
+  /* blinking block cursor after the page title */
+  @media (prefers-reduced-motion: no-preference) {
+    .post-title::after,
+    h1.dynamic-title::after {
+      content: '█';
+      margin-left: 0.3em;
+      animation: console-cursor 1.1s steps(1) infinite;
+    }
+  }
+}
+
+/* sound switch: only meaningful in the console themes */
+html:not([data-mode^='console']) #sound-toggle {
+  display: none;
+}
+
+/* typed posts: text is hidden until the script starts, with a fail-safe in case it never does */
+html[data-mode^='console'] article[data-typefx]:not([data-fx-ready]) :is(h1, .content) {
+  opacity: 0;
+  animation: console-reveal 0s 2.5s forwards;
+}
+
+html[data-mode^='console'] {
+  .fx-hidden {
+    visibility: hidden;
+  }
+
+  .fx-caret {
+    display: inline-block;
+    width: 0;
+    overflow: visible;
+    color: var(--heading-color);
+    text-shadow: none;
+    animation: console-cursor 0.8s steps(1) infinite;
+  }
+}
+
+@keyframes console-reveal {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes console-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- CRT motion: crawling scanlines, a rolling band, flicker and short glitch bursts ---------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-mode='console'] {
+    /* the dark scanlines slowly crawl down the screen (30px is ten scanline periods: the loop is seamless) */
+    body::after {
+      background-size: auto, auto;
+      animation: crt-crawl 3s linear infinite;
+    }
+
+    /* a soft bright band rolls from top to bottom now and then */
+    body::before {
+      content: '';
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: -20vh;
+      height: 18vh;
+      z-index: 9998;
+      pointer-events: none;
+      background: linear-gradient(to bottom, rgb(240 90 90 / 0%), rgb(240 90 90 / 7%), rgb(240 90 90 / 0%));
+      animation: crt-roll 7s linear infinite;
+    }
+
+    /* a barely visible brightness flicker over everything */
+    &::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9997;
+      pointer-events: none;
+      background: rgb(240 90 90 / 3%);
+      animation: crt-flicker 3.7s steps(1) infinite;
+    }
+
+    /* glitch burst (class added for ~0.2 s by terminal-fx.js): torn rows, red ghosting and a displaced band */
+    &.crt-glitch {
+      :is(article p, article h1, article h2, article h3, article li, .post-preview, .card, #sidebar .nav-item, .tag):nth-child(odd) {
+        transform: translateX(var(--gx, 4px));
+      }
+
+      :is(article p, article h1, article h2, article h3, article li, .post-preview, .card, #sidebar .nav-item, .tag):nth-child(even) {
+        transform: translateX(calc(var(--gx, 4px) * -1.4));
+      }
+
+      body {
+        text-shadow:
+          2px 0 rgb(255 0 0 / 70%),
+          -2px 0 rgb(110 0 0 / 80%);
+      }
+
+      &::before {
+        content: '';
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: var(--gy, 40%);
+        height: 6vh;
+        z-index: 9998;
+        pointer-events: none;
+        background: rgb(255 70 70 / 14%);
+        backdrop-filter: blur(1.2px) saturate(1.8);
+        transform: translateX(var(--gx, 4px));
+      }
+    }
+  }
+}
+
+@keyframes crt-crawl {
+  to {
+    background-position:
+      0 30px,
+      0 0;
+  }
+}
+
+@keyframes crt-roll {
+  to {
+    top: 120vh;
+  }
+}
+
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  30% {
+    opacity: 0.2;
+  }
+
+  34% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0.5;
+  }
+
+  72% {
+    opacity: 1;
+  }
+}
+
+/* ---------- boot overlay: first-visit theme picker and console boot screen ---------- */
+
+#boot-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  color: #f05a5a;
+  font-family: ui-monospace, sfmono-regular, menlo, consolas, 'Liberation Mono', monospace;
+  text-shadow: 0 0 6px rgb(240 90 90 / 45%);
+  transition: opacity 0.5s ease;
+
+  &.boot-fade {
+    opacity: 0;
+  }
+
+  /* the picker or the boot screen is on only while theme.js asks for it */
+  #boot-choose,
+  #boot-screen {
+    display: none;
+  }
+
+  /* scanlines, as in the console */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgb(0 0 0 / 0%) 0,
+      rgb(0 0 0 / 0%) 2px,
+      rgb(0 0 0 / 22%) 3px
+    );
+  }
+}
+
+html.boot-choose,
+html.boot-run {
+  overflow: hidden;
+}
+
+html.boot-choose #boot-overlay,
+html.boot-run #boot-overlay {
+  display: flex;
+}
+
+html.boot-choose #boot-overlay #boot-choose {
+  display: block;
+  width: min(32rem, calc(100% - 2rem));
+
+  .boot-heading {
+    margin: 0 0 0.4rem;
+    font-size: 1.1rem;
+    letter-spacing: 0.08em;
+  }
+
+  .boot-hint {
+    margin: 0 0 1.4rem;
+    font-size: 0.85rem;
+    color: #9e0000;
+  }
+
+  .boot-options {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 0.8rem 1rem;
+    text-align: left;
+    border: 1px solid #620505;
+    border-radius: 2px;
+    background: #0d0d0d;
+    color: #f05a5a;
+    font: inherit;
+    cursor: pointer;
+
+    b {
+      display: block;
+      font-size: 1.05rem;
+    }
+
+    span {
+      display: block;
+      margin-top: 0.25rem;
+      font-size: 0.8rem;
+      color: #9e0000;
+    }
+
+    &:hover,
+    &:focus-visible {
+      outline: none;
+      background: #620505;
+      border-color: #f05a5a;
+      color: #ffffff;
+    }
+  }
+}
+
+html.boot-run #boot-overlay #boot-screen {
+  display: block;
+  box-sizing: border-box;
+  width: min(60rem, 100%);
+  max-height: 100%;
+  padding: 1rem;
+  overflow: hidden;
+  font-size: clamp(0.62rem, 2.2vw, 0.95rem);
+  line-height: 1.25;
+  white-space: pre;
+
+  .boot-ok {
+    color: #5dff95;
+  }
+
+  .boot-title {
+    color: #ffffff;
+  }
+}
+
+/* if the script never starts (it normally marks the overlay as ready at once), let the page through */
+#boot-overlay:not([data-ready]) {
+  animation: boot-failsafe 0s 6s forwards;
+}
+
+@keyframes boot-failsafe {
+  to {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+}

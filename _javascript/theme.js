@@ -6,6 +6,9 @@
 class Theme {
   static #modeKey = 'mode';
   static #modeAttr = 'data-mode';
+  static #themeKey = 'anco-theme';
+  static #splashKey = 'anco-splash';
+  static #bootDoneKey = 'anco-boot-done';
   static #darkMedia = window.matchMedia('(prefers-color-scheme: dark)');
   static switchable = !document.documentElement.hasAttribute(this.#modeAttr);
 
@@ -19,6 +22,27 @@ class Theme {
 
   static get ANCO() {
     return 'anco';
+  }
+
+  static get CONSOLE() {
+    return 'console';
+  }
+
+  /** Themes the site owner fixes in `theme_mode`; the sidebar button cycles through these (all dark). */
+  static get THEMES() {
+    return [this.ANCO, this.CONSOLE];
+  }
+
+  static get THEME_NAMES() {
+    return {
+      [this.ANCO]: 'Обычная',
+      [this.CONSOLE]: 'Консольная'
+    };
+  }
+
+  /** The theme chosen with the sidebar button, if any. */
+  static get current() {
+    return this.THEMES.includes(this.#mode) ? this.#mode : this.ANCO;
   }
 
   /**
@@ -59,7 +83,7 @@ class Theme {
   }
 
   static get #isDarkMode() {
-    return this.#mode === this.DARK || this.#mode === this.ANCO;
+    return this.#mode === this.DARK || this.THEMES.includes(this.#mode);
   }
 
   static get #hasMode() {
@@ -80,7 +104,8 @@ class Theme {
     return {
       [this.LIGHT]: light,
       [this.DARK]: dark,
-      [this.ANCO]: dark
+      [this.ANCO]: dark,
+      [this.CONSOLE]: dark
     };
   }
 
@@ -88,7 +113,10 @@ class Theme {
    * Initializes the theme based on system preferences or stored mode
    */
   static init() {
+    this.#restoreView();
+
     if (!this.switchable) {
+      this.#restoreTheme();
       return;
     }
 
@@ -110,6 +138,116 @@ class Theme {
     } else {
       this.#setLight();
     }
+  }
+
+  /**
+   * Puts back the theme picked with the sidebar button on an earlier visit
+   * (the layout fixes `data-mode`, this runs before the page is painted).
+   */
+  static #restoreTheme() {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(this.#themeKey);
+    } catch {
+      // storage blocked: keep the theme from the layout
+    }
+
+    if (saved === 'console-red') {
+      saved = this.CONSOLE; // the id this theme had before there was only one console theme
+      try {
+        localStorage.setItem(this.#themeKey, saved);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (saved && this.THEMES.includes(saved)) {
+      document.documentElement.setAttribute(this.#modeAttr, saved);
+    }
+
+    this.#prepareBoot(saved);
+  }
+
+  /**
+   * Decides, before the page is painted, whether the full-screen boot overlay is needed:
+   * - first visit (no theme remembered yet): the theme picker (`boot-choose`)
+   * - the console theme was chosen and the splash was not switched off: the boot screen (`boot-run`),
+   *   once per browser session
+   */
+  static #prepareBoot(saved) {
+    let splash;
+    let done;
+
+    try {
+      localStorage.setItem('anco-probe', '1');
+      localStorage.removeItem('anco-probe');
+      splash = localStorage.getItem(this.#splashKey);
+      done = sessionStorage.getItem(this.#bootDoneKey);
+    } catch {
+      return; // storage is blocked: a choice could not be remembered, so never interrupt the page
+    }
+
+    const root = document.documentElement;
+    if (!saved || !this.THEMES.includes(saved)) {
+      root.classList.add('boot-choose');
+    } else if (saved === this.CONSOLE && splash !== 'off' && (!done || this.#isReload)) {
+      root.classList.add('boot-run');
+    }
+  }
+
+  /** The post list view: tiles by default, the old long cards when the reader chose "list". */
+  static #restoreView() {
+    try {
+      if (localStorage.getItem('anco-view') === 'list') {
+        document.documentElement.setAttribute('data-view', 'list');
+      }
+    } catch {
+      // storage blocked: tiles
+    }
+  }
+
+  /** A page reload (F5) counts as coming back to the site, so the boot screen plays again. */
+  static get #isReload() {
+    return performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
+  }
+
+  /**
+   * Applies and remembers a site theme. `manual` marks a switch made with the sidebar button,
+   * after which the boot screen no longer plays on entry.
+   */
+  static setTheme(theme, { manual = false } = {}) {
+    document.documentElement.setAttribute(this.#modeAttr, theme);
+
+    try {
+      localStorage.setItem(this.#themeKey, theme);
+      if (manual) {
+        localStorage.setItem(this.#splashKey, 'off');
+      } else {
+        localStorage.removeItem(this.#splashKey);
+      }
+    } catch {
+      // storage blocked: the choice just will not persist
+    }
+
+    this.#notify();
+  }
+
+  /** Marks the boot screen as shown for this browser session. */
+  static markBootDone() {
+    try {
+      sessionStorage.setItem(this.#bootDoneKey, '1');
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Switches to the next site theme (обычная ↔ консольная) and remembers it
+   */
+  static cycleTheme() {
+    const next = this.THEMES[(this.THEMES.indexOf(this.current) + 1) % this.THEMES.length];
+    this.setTheme(next, { manual: true });
+    return next;
   }
 
   /**

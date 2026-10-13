@@ -6,6 +6,9 @@
  */
 
 const STORAGE_KEY = 'anco-console-sound';
+const VOLUME_KEY = 'anco-console-volume';
+const DEFAULT_VOLUME = 0.8;
+const POSITION_KEY = 'anco-loop-pos';
 const FADE = 0.4; // seconds the start-up fades into the loop
 const START_GAIN = 0.7;
 const LOOP_GAIN = 0.35;
@@ -29,6 +32,48 @@ export class ConsoleSound {
       // storage blocked: default to on
     }
     this.enabled = stored !== 'off';
+
+    let volume = DEFAULT_VOLUME;
+    try {
+      const saved = parseFloat(localStorage.getItem(VOLUME_KEY));
+      if (Number.isFinite(saved)) volume = Math.min(1, Math.max(0, saved));
+    } catch {
+      // storage blocked: default volume
+    }
+    this.volume = volume;
+    if (volume === 0) this.enabled = false;
+
+    // an "off" left by the old sound button does not count: until the knob has been used the sound is on
+    let usedKnob = false;
+    try {
+      usedKnob = localStorage.getItem(VOLUME_KEY) !== null;
+    } catch {
+      // ignore
+    }
+    if (!usedKnob) this.enabled = true;
+  }
+
+  /** What actually reaches the speakers: the volume knob, or silence when muted. */
+  get level() {
+    return this.enabled ? this.volume : 0;
+  }
+
+  /** Volume knob (0..1). Zero is the same as muted; anything above turns the sound on. */
+  setVolume(value) {
+    this.volume = Math.min(1, Math.max(0, value));
+    this.enabled = this.volume > 0;
+
+    try {
+      localStorage.setItem(VOLUME_KEY, String(this.volume));
+      localStorage.setItem(STORAGE_KEY, this.enabled ? 'on' : 'off');
+    } catch {
+      // ignore
+    }
+
+    if (this.ctx && this.master) {
+      this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.master.gain.setTargetAtTime(this.level, this.ctx.currentTime, 0.03);
+    }
   }
 
   get supported() {
@@ -43,7 +88,7 @@ export class ConsoleSound {
       const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
       this.ctx = new Context();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 1;
+      this.master.gain.value = this.level;
       this.master.connect(this.ctx.destination);
     }
 
@@ -75,7 +120,7 @@ export class ConsoleSound {
       const now = this.ctx.currentTime + 0.05;
       const joinAt = now + Math.max(0, start.duration - FADE);
       this.master.gain.cancelScheduledValues(this.ctx.currentTime);
-      this.master.gain.setValueAtTime(1, this.ctx.currentTime);
+      this.master.gain.setValueAtTime(this.level, this.ctx.currentTime);
 
       const startSource = this.ctx.createBufferSource();
       startSource.buffer = start;
@@ -102,6 +147,85 @@ export class ConsoleSound {
     }
   }
 
+  /**
+   * Ambient loop only (no start-up sting), for the site pages in the console theme. It carries on from where
+   * the previous page left off, so moving between pages does not restart the music from the top.
+   */
+  async startLoop() {
+    if (!this.enabled || !this.supported || this.playing || !this.loopUrl) return;
+    this.unlock();
+    if (this.ctx.state !== 'running') return; // the browser has not allowed audio yet: retried on the next gesture
+
+    try {
+      if (!this.loopBuffer) {
+        const response = await fetch(this.loopUrl);
+        if (!response.ok) throw new Error(String(response.status));
+        this.loopBuffer = await this.ctx.decodeAudioData(await response.arrayBuffer());
+      }
+      if (!this.enabled || this.playing || this.ctx.state !== 'running') return;
+
+      let offset = 0;
+      try {
+        offset = parseFloat(sessionStorage.getItem(POSITION_KEY)) || 0;
+      } catch {
+        // ignore
+      }
+      const duration = this.loopBuffer.duration;
+      offset = duration ? offset % duration : 0;
+
+      const now = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(now);
+      this.master.gain.setValueAtTime(this.level, now);
+
+      const source = this.ctx.createBufferSource();
+      source.buffer = this.loopBuffer;
+      source.loop = true;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(LOOP_GAIN, now + 1.2);
+      source.connect(gain).connect(this.master);
+      source.start(0, offset);
+
+      this.loopStartedAt = now;
+      this.loopOffset = offset;
+      this.sources = [source];
+      this.playing = true;
+    } catch (error) {
+      console.warn('Ambient loop unavailable:', error);
+    }
+  }
+
+  /** Remembers where the loop is, for the next page. */
+  saveLoopPosition() {
+    if (!this.playing || !this.ctx || !this.loopBuffer) return;
+    const position = (this.loopOffset + (this.ctx.currentTime - this.loopStartedAt)) % this.loopBuffer.duration;
+    try {
+      sessionStorage.setItem(POSITION_KEY, String(position));
+    } catch {
+      // ignore
+    }
+  }
+
+  /** Plays just the start-up sting (no loop), e.g. for the site boot screen. */
+  async sting() {
+    if (!this.enabled || !this.supported || !this.ctx || this.ctx.state !== 'running' || !this.startUrl) return;
+
+    try {
+      const response = await fetch(this.startUrl);
+      if (!response.ok) throw new Error(String(response.status));
+      const buffer = await this.ctx.decodeAudioData(await response.arrayBuffer());
+
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = this.ctx.createGain();
+      gain.gain.value = START_GAIN;
+      source.connect(gain).connect(this.master);
+      source.start();
+    } catch (error) {
+      console.warn('Start-up sound unavailable:', error);
+    }
+  }
+
   stop() {
     if (!this.ctx || !this.playing) return;
 
@@ -120,8 +244,23 @@ export class ConsoleSound {
     this.playing = false;
   }
 
+  /** Mute / unmute without touching the start-up sting or the loop (used by the site-wide switch). */
+  mute(value) {
+    this.enabled = !value;
+    if (!value && this.volume === 0) this.volume = DEFAULT_VOLUME;
+    try {
+      localStorage.setItem(STORAGE_KEY, value ? 'off' : 'on');
+    } catch {
+      // ignore
+    }
+    if (value) {
+      this.stop();
+    }
+  }
+
   setEnabled(value) {
     this.enabled = value;
+    if (value && this.volume === 0) this.volume = DEFAULT_VOLUME;
     try {
       localStorage.setItem(STORAGE_KEY, value ? 'on' : 'off');
     } catch {
@@ -147,12 +286,12 @@ export class ConsoleSound {
     // everything already playing (the ambient loop) is muffled for a few seconds
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(this.master.gain.value, now);
-    this.master.gain.linearRampToValueAtTime(0.12, now + 0.05);
-    this.master.gain.setValueAtTime(0.12, now + 4.5);
-    this.master.gain.linearRampToValueAtTime(1, now + 7);
+    this.master.gain.linearRampToValueAtTime(this.level * 0.12, now + 0.05);
+    this.master.gain.setValueAtTime(this.level * 0.12, now + 4.5);
+    this.master.gain.linearRampToValueAtTime(this.level, now + 7);
 
     const out = ctx.createGain();
-    out.gain.value = 1;
+    out.gain.value = this.level;
     out.connect(ctx.destination); // bypass the muffled master
 
     // the bang: white noise with a fast decay

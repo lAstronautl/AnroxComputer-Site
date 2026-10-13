@@ -10,7 +10,10 @@ import { ESC, c, crlf, visibleLength } from './ansi';
 import { buildFs } from './storage';
 import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
+import { playMap } from './mapview';
 import { ConsoleSound } from './sound';
+import { createKnob } from './knob';
+import { LOGO, LOGO_SMALL, LOGO_WIDTH } from './logo';
 
 // eslint-disable-next-line no-control-regex
 const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|\x1b|[\s\S]/gu;
@@ -19,7 +22,6 @@ const REAL_NAME_RULE = /^[\p{L}\p{N} .,'-]{2,60}$/u;
 
 // the "staff" list hides real names behind shimmering symbols
 const GLYPHS = '#$@%&!*?§¤^+=~<>/|';
-const NAME_COLUMN = { start: 24, width: 14 }; // 1-based terminal column and width of the name field in the staff table
 const SHIMMER_MS = 140;
 const SHIMMER_TOTAL = 3500;
 
@@ -37,18 +39,7 @@ const PUMP_MS = 16;
 const FAST_AFTER = 700; // long dumps speed up so a big file never takes more than a few seconds
 const UNITS = /\x1b\[[0-9;?]*[A-Za-z~]|\x1b[\s\S]|[\s\S]/gu; // eslint-disable-line no-control-regex
 
-const LOGO = [
-  ' █████╗ ███╗   ██╗██████╗  ██████╗ ██╗  ██╗     ██████╗ ███████╗',
-  '██╔══██╗████╗  ██║██╔══██╗██╔═══██╗╚██╗██╔╝    ██╔═══██╗██╔════╝',
-  '███████║██╔██╗ ██║██████╔╝██║   ██║ ╚███╔╝     ██║   ██║███████╗',
-  '██╔══██║██║╚██╗██║██╔══██╗██║   ██║ ██╔██╗     ██║   ██║╚════██║',
-  '██║  ██║██║ ╚████║██║  ██║╚██████╔╝██╔╝ ██╗    ╚██████╔╝███████║',
-  '╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚══════╝'
-];
 
-// the banner is 66 columns wide; narrower terminals (phones) get a plain title
-const LOGO_WIDTH = 66;
-const LOGO_SMALL = ['ANROX OS'];
 
 class Shell {
   constructor(data) {
@@ -69,6 +60,8 @@ class Shell {
     this.chain = Promise.resolve(); // account calls run one after another, so a refresh never overtakes a write
     this.sound = null;
     this.articlesUrl = '';
+    this.homeUrl = '';
+    this.screen = null;
     this.articles = null;
     this.shimmerTimer = 0;
     this.pendingShimmer = null;
@@ -190,8 +183,7 @@ class Shell {
 
   promptString() {
     if (!this.user) return `${c.grey('guest@anrox')} ${c.red('$')} `;
-    const mail = this.user.unread > 0 ? ` ${c.amber(`✉${this.user.unread}`)}` : '';
-    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${mail}${c.red(' $')} `;
+    return `${c.green(this.user.name)}${c.grey('@anrox')} ${c.blue(this.cwd)}${c.red(' $')} `;
   }
 
   showPrompt() {
@@ -209,7 +201,7 @@ class Shell {
   }
 
   /** Re-draws the hidden-name cells of the staff table with fresh random symbols for a few seconds. */
-  startShimmer({ count }) {
+  startShimmer({ count, col, width }) {
     this.stopShimmer();
     if (this.busy || this.askState) return;
 
@@ -223,7 +215,7 @@ class Shell {
       let out = '';
       for (let i = 0; i < count; i += 1) {
         const up = count - i + 1; // rows between this table row and the prompt line
-        out += `${ESC}[${up}A${ESC}[${NAME_COLUMN.start}G${c.grey(scramble(NAME_COLUMN.width))}${ESC}[${up}B`;
+        out += `${ESC}[${up}A${ESC}[${col}G${c.grey(scramble(width))}${ESC}[${up}B`;
       }
       const column = visibleLength(this.promptText) + this.cursor + 1;
       this.term.write(`${out}${ESC}[${column}G`);
@@ -406,7 +398,12 @@ class Shell {
     let prefix = '';
 
     if (parts.length === 1) {
-      options = Object.keys(this.commands).filter((name) => !this.commands[name].hidden && !(this.commands[name].admin && !this.isAdmin()) && name.startsWith(word.toLowerCase()));
+      options = Object.keys(this.commands).filter(
+        (name) =>
+          !this.commands[name].hidden &&
+          this.commandLevel(this.commands[name]) <= (this.user?.level ?? 0) &&
+          name.startsWith(word.toLowerCase())
+      );
     } else {
       const slash = word.lastIndexOf('/');
       prefix = word.slice(0, slash + 1);
@@ -489,7 +486,7 @@ class Shell {
       forbidden: 'ДОСТУП ЗАПРЕЩЁН. Недостаточный уровень допуска.',
       'too-high': 'Нельзя выдать уровень выше собственного.',
       'bad-level': 'Уровень — целое число от 0.',
-      'bad-department': 'Нет такого отдела. Название: от 2 до 60 символов.',
+      'bad-department': 'Название отдела: от 2 до 60 символов.',
       'not-found': 'Сотрудник не найден.',
       'not-higher': 'Это не повышение: у сотрудника уже такой или более высокий уровень.',
       self: 'Над собой эта команда не действует.',
@@ -716,11 +713,20 @@ class Shell {
         run: () => this.cmdExplosionEgg()
       },
       flashbang: {
-        desc: 'светошумовая граната',
+        hidden: true, // secret: not in help, not in tab completion
         run: () => this.cmdFlashbang()
       },
+      map: {
+        desc: 'интерактивная карта (map [номер статьи])',
+        auth: true,
+        run: (args) => this.cmdMap(args)
+      },
+      site: {
+        desc: 'вернуться на сайт',
+        run: () => this.cmdSite()
+      },
       sound: {
-        desc: 'звук консоли (sound on | off)',
+        desc: 'громкость (sound 0–100, on, off)',
         run: (args) => this.cmdSound(args)
       },
       games: {
@@ -741,6 +747,9 @@ class Shell {
     commands.open = commands.cat;
     commands.find = commands.search;
     commands.cls = commands.clear;
+    commands.home = commands.site;
+    commands.карта = commands.map;
+    commands.сайт = commands.site;
     commands.useradd = commands.adduser;
     commands.unlock = commands.auth;
     commands.inbox = commands.mail;
@@ -762,14 +771,39 @@ class Shell {
     return commands;
   }
 
+  /** The position (level) from which a command is available. */
+  commandLevel(command) {
+    if (command.admin) return this.adminLevel;
+    return command.auth ? 1 : 0;
+  }
+
+  /** Commands grouped by the position that unlocks them; only those the reader can use are listed. */
   cmdHelp() {
+    const aliases = ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox', 'home'];
     const shown = new Set();
-    this.println(c.bold(c.red('Команды:')));
+    const groups = new Map();
+    const reach = this.user?.level ?? 0; // only what this reader can actually use
+
     for (const [name, command] of Object.entries(this.commands)) {
-      if (shown.has(command) || command.hidden || (command.admin && !this.isAdmin()) || ['dir', 'type', 'open', 'find', 'cls', 'exit', '?', 'inbox'].includes(name)) continue;
+      if (shown.has(command) || command.hidden || aliases.includes(name)) continue;
       shown.add(command);
-      this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}${command.auth && !this.user ? c.grey('  [после входа]') : ''}`);
+
+      const level = this.commandLevel(command);
+      if (level > reach) continue;
+      groups.set(level, [...(groups.get(level) ?? []), { name, command }]);
     }
+
+    this.println(c.bold(c.red('Команды по должностям:')));
+    for (const level of [...groups.keys()].sort((a, b) => a - b)) {
+      const title = level === 0 ? 'ДЛЯ ВСЕХ' : `${this.levelName(level)} (L${level}+)`;
+      this.println('');
+      this.println(c.red(`── ${title} `));
+      for (const { name, command } of groups.get(level)) {
+        this.println(`  ${c.amber(name.padEnd(10))} ${command.desc}`);
+      }
+    }
+
+    this.println('');
     this.println(c.grey('Tab — дополнить, ↑/↓ — история, Ctrl+C — отмена, Ctrl+L — очистить.'));
   }
 
@@ -929,34 +963,19 @@ class Shell {
     }
   }
 
-  /**
-   * Department chosen from the list by number, or written in by hand.
-   * Returns null when cancelled or invalid (the reason is already printed).
-   */
+  /** Department written in by hand. Returns null when cancelled or invalid (the reason is already printed). */
   async askDepartment(title) {
-    const departments = this.data.departments ?? [];
-    this.println(c.amber(`${title}:`));
-    departments.forEach((d, i) => this.println(`  ${c.bright(String(i + 1))}. ${d.name}`));
-    this.println(c.grey('Выберите номер или впишите своё название отдела.'));
-
-    const answer = await this.ask(c.amber('Отдел: '));
+    const answer = await this.ask(c.amber(`${title} (впишите название): `));
     if (answer == null) return null;
 
-    const text = answer.replace(/\s+/g, ' ').trim();
-    if (/^\d+$/.test(text)) {
-      const listed = departments[Number(text) - 1];
-      if (!listed) this.failure('bad-department');
-      return listed ?? null;
-    }
-
-    if (text.length < 2 || text.length > 60) {
+    const name = answer.replace(/\s+/g, ' ').trim();
+    if (name.length < 2 || name.length > 60) {
       this.println(c.red('Название отдела: от 2 до 60 символов.'));
       return null;
     }
 
-    // a custom name has no preset level: the employee starts at the lowest working level
-    const known = departments.find((d) => d.name.toLowerCase() === text.toLowerCase());
-    return known ?? { custom: true, name: text, level: 1 };
+    // a hand-written department has no preset level: the employee starts at the lowest working level
+    return { name, level: 1 };
   }
 
   /** Several lines of text; an empty line sends. Returns null when cancelled. */
@@ -1236,22 +1255,32 @@ class Shell {
     const seeReal = this.isAdmin();
     const cell = (text, width) => String(text).slice(0, width).padEnd(width);
 
+    // narrow terminals (phones) get a compact table without the department column
+    const compact = (this.term.cols ?? 80) < 64;
+    const callsignWidth = compact ? 12 : 16;
+    const nameWidth = compact ? 11 : 14;
+    const nameColumn = 2 + 2 + 2 + callsignWidth + 1 + 1; // 1-based terminal column where the name field starts
+
     this.println(c.bold(c.red(`Персонал АнКо — ${list.length}`)));
-    this.println(c.grey(`  ${'№'.padStart(2)}  ${cell('Позывной', 16)} ${cell('Имя', NAME_COLUMN.width)} ${cell('Отдел', 14)} Уровень`));
+    this.println(
+      c.grey(
+        `  ${'№'.padStart(2)}  ${cell('Позывной', callsignWidth)} ${cell('Имя', nameWidth)} ${compact ? '' : `${cell('Отдел', 14)} `}Уровень`
+      )
+    );
 
     list.forEach((person, i) => {
       const me = this.user && person.name.toLowerCase() === this.user.name.toLowerCase();
-      const callsign = cell(me ? `${person.name} *` : person.name, 16);
+      const callsign = cell(me ? `${person.name} *` : person.name, callsignWidth);
       // real names are for level 10+; everyone else sees noise
-      const real = seeReal ? c.bright(cell(person.realName || '—', NAME_COLUMN.width)) : c.grey(scramble(NAME_COLUMN.width));
-      const department = cell(this.shortDepartment(person.department), 14);
-      const level = `${this.levelName(person.level)} (L${person.level})`;
-      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(callsign) : c.bright(callsign)} ${real} ${department} ${c.amber(level)}`);
+      const real = seeReal ? c.bright(cell(person.realName || '—', nameWidth)) : c.grey(scramble(nameWidth));
+      const department = compact ? '' : `${cell(this.shortDepartment(person.department), 14)} `;
+      const level = compact ? `L${person.level}` : `${this.levelName(person.level)} (L${person.level})`;
+      this.println(`  ${c.grey(String(i + 1).padStart(2))}  ${me ? c.green(callsign) : c.bright(callsign)} ${real} ${department}${c.amber(level)}`);
     });
     this.println(c.grey('* — это вы.'));
 
     const fits = list.length + 4 <= (this.term.rows ?? 24);
-    if (!seeReal && fits) this.pendingShimmer = { count: list.length };
+    if (!seeReal && fits) this.pendingShimmer = { count: list.length, col: nameColumn, width: nameWidth };
   }
 
   async cmdSetName(args) {
@@ -1432,7 +1461,7 @@ class Shell {
 
     this.println(c.bold(c.red(`Архив АнКо — статей: ${list.length}`)));
     list.forEach((article, i) => {
-      const where = article.categories ? c.grey(`  [${article.categories}]`) : '';
+      const where = (article.categories ? c.grey(`  [${article.categories}]`) : '') + (article.zones?.length ? c.amber('  [карта]') : '');
       this.println(`  ${c.bright(String(i + 1).padStart(2))}. ${article.title}${where}`);
     });
     this.println(c.grey('read <номер|слово> — прочитать статью.'));
@@ -1460,6 +1489,37 @@ class Shell {
       .join('\n');
   }
 
+  async cmdMap(args) {
+    const list = await this.loadArticles();
+    if (!list) return;
+
+    const withMaps = list.filter((article) => article.zones?.length);
+    if (withMaps.length === 0) {
+      this.println(c.grey('В архиве нет интерактивных карт.'));
+      return;
+    }
+
+    if (args.length > 0) {
+      const article = await this.pickArticle(args, 'map <номер|слово>');
+      if (!article) return;
+      if (!article.zones?.length) {
+        this.println(c.red('У этой статьи нет интерактивной карты.'));
+        return;
+      }
+      await playMap(this, article);
+      return;
+    }
+
+    if (withMaps.length === 1) {
+      await playMap(this, withMaps[0]);
+      return;
+    }
+
+    this.println(c.bold(c.red('Интерактивные карты:')));
+    for (const item of withMaps) this.println(`  ${c.bright(String(list.indexOf(item) + 1).padStart(2))}. ${item.title}`);
+    this.println(c.grey('map <номер> — открыть карту.'));
+  }
+
   async cmdRead(args) {
     const article = await this.pickArticle(args, 'read <номер|слово>');
     if (!article) return;
@@ -1477,7 +1537,8 @@ class Shell {
     this.println(c.red(`── ${article.title} ${'─'.repeat(Math.max(2, 40 - [...article.title].length))}`));
     if (article.categories) this.println(c.grey(`Раздел: ${article.categories}`));
     this.println('');
-    this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: интерактивная карта, схема или изображение)'));
+    if (article.zones?.length) this.println(c.amber(`Интерактивная карта: map ${this.articles.indexOf(article) + 1}`));
+    this.println(body ? this.wrap(body) : c.grey('(текст статьи — только на сайте: схема или изображение)'));
     this.println(c.red('─'.repeat(44)));
     this.log({ action: 'article', target: article.title });
   }
@@ -1519,8 +1580,20 @@ class Shell {
     setTimeout(() => flash.remove(), 6500);
   }
 
+  async cmdSite() {
+    if (!this.homeUrl) {
+      this.println(c.grey('Адрес сайта неизвестен.'));
+      return;
+    }
+
+    this.println(c.grey('Возврат на сайт ...'));
+    await this.flush();
+    await sleep(300);
+    window.location.href = this.homeUrl;
+  }
+
   cmdSound(args) {
-    const mode = (args[0] ?? '').toLowerCase();
+    const mode = (args[0] ?? '').toLowerCase().replace('%', '');
     if (!this.sound?.supported) {
       this.println(c.grey('Звук недоступен в этом браузере.'));
       return;
@@ -1528,11 +1601,16 @@ class Shell {
 
     if (mode === 'on' || mode === 'вкл') this.sound.setEnabled(true);
     else if (mode === 'off' || mode === 'выкл') this.sound.setEnabled(false);
-    else {
-      this.println(c.grey(`Звук: ${this.sound.enabled ? 'включён' : 'выключен'}. Использование: sound on | sound off`));
+    else if (/^\d{1,3}$/.test(mode)) {
+      this.sound.unlock();
+      this.sound.setVolume(Math.min(100, Number(mode)) / 100);
+      if (this.sound.enabled) void this.sound.start();
+      else this.sound.stop();
+    } else {
+      this.println(c.grey(`Громкость: ${Math.round(this.sound.level * 100)}%. Использование: sound <0–100> | sound on | sound off`));
       return;
     }
-    this.println(c.grey(`Звук ${this.sound.enabled ? 'включён' : 'выключен'}.`));
+    this.println(c.grey(`Громкость: ${Math.round(this.sound.level * 100)}%.`));
   }
 
   cmdGames() {
@@ -1568,13 +1646,14 @@ class Shell {
       await sleep(40);
     }
     this.println('');
-    this.println(c.bright(this.data.title ?? 'КОНСОЛЬ'));
+    for (const line of this.wrap(this.data.title ?? 'КОНСОЛЬ').split('\n')) this.println(c.bright(line));
     this.println(c.grey(this.data.version ?? ''));
     if (this.data.subtitle) this.println(c.grey(this.data.subtitle));
     await this.flush();
     const checks = this.data.boot_checks ?? ['Проверка каналов связи', 'Шифрование'];
     for (const check of checks) {
-      this.println(c.grey(`${check} `.padEnd(38, '.') + ' ') + c.green('OK'));
+      const dots = Math.max(check.length + 3, Math.min(38, (this.term.cols ?? 80) - 5));
+      this.println(c.grey(`${check} `.padEnd(dots, '.') + ' ') + c.green('OK'));
       await this.flush();
       await sleep(120 + Math.random() * 180);
     }
@@ -1586,7 +1665,7 @@ class Shell {
       this.mailNotice();
     } else {
       this.println('');
-      this.println(`Для доступа: ${c.amber('login')} — вход, ${c.amber('help')} — команды.`);
+      this.println(`Для доступа: ${c.amber('login')} — вход, ${c.amber('help')} — команды`);
     }
     this.println('');
 
@@ -1619,6 +1698,8 @@ export async function initConsole() {
   const sound = new ConsoleSound({ startUrl: root.dataset.soundStart, loopUrl: root.dataset.soundLoop });
   shell.sound = sound;
   shell.articlesUrl = root.dataset.articles ?? '';
+  shell.homeUrl = root.dataset.home ?? '';
+  shell.screen = screen;
   const term = new WTerm(screen, {
     cursorBlink: true,
     onData: (input) => shell.handleData(input)
@@ -1635,23 +1716,30 @@ export async function initConsole() {
   root.addEventListener('click', () => term.focus());
 
   // browsers only allow audio after a gesture, so the terminal "powers on" with a click
-  const toggle = document.getElementById('rp-console-sound');
-  const syncToggle = () => {
-    if (!toggle) return;
-    toggle.hidden = !sound.supported;
-    toggle.setAttribute('aria-pressed', String(sound.enabled));
-    toggle.textContent = sound.enabled ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
-  };
-  syncToggle();
-  toggle?.addEventListener('click', () => {
-    sound.setEnabled(!sound.enabled);
-    syncToggle();
-  });
-  const setEnabled = sound.setEnabled.bind(sound);
-  sound.setEnabled = (value) => {
-    setEnabled(value);
-    syncToggle();
-  };
+  const knobHost = document.getElementById('rp-console-sound');
+  const knob = knobHost
+    ? createKnob(knobHost, {
+        value: sound.level,
+        onInput: (value) => {
+          sound.unlock();
+          sound.setVolume(value);
+          if (value > 0) void sound.start();
+          else sound.stop();
+          sound.tick();
+        }
+      })
+    : null;
+  if (knobHost) knobHost.hidden = !sound.supported;
+
+  // the `sound` command and the knob stay in step
+  const syncKnob = () => knob?.set(sound.level);
+  for (const name of ['setEnabled', 'setVolume']) {
+    const original = sound[name].bind(sound);
+    sound[name] = (value) => {
+      original(value);
+      syncKnob();
+    };
+  }
 
   window.addEventListener('pagehide', () => sound.stop());
 

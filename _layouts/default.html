@@ -28,6 +28,7 @@ layout: compress
   {%- endif -%}
 
   <body data-slug="{{ _slug }}">
+    {% include boot-overlay.html %}
     {% include sidebar.html lang=lang %}
 
     <div id="main-wrapper" class="d-flex justify-content-center">

@@ -52,6 +52,16 @@
   </nav>
 
   <div class="sidebar-bottom d-flex flex-wrap  align-items-center w-100">
+    {% if site.theme_mode %}
+      <button type="button" class="btn btn-link nav-link" aria-label="Сменить тему" title="Сменить тему" id="theme-switch">
+        <i class="fas fa-palette"></i>
+      </button>
+
+      <span id="sound-toggle" class="rp-knob rp-knob-mini"></span>
+
+      <span class="icon-border"></span>
+    {% endif %}
+
     {% unless site.theme_mode %}
       <button type="button" class="btn btn-link nav-link" aria-label="Switch Mode" id="mode-toggle">
         <i class="fas fa-adjust"></i>

@@ -24,6 +24,10 @@ html {
     &[data-mode='anco'] {
       @include anco.styles;
     }
+
+    &[data-mode='console'] {
+      @include anco.styles;
+    }
   }
 
   @media (prefers-color-scheme: dark) {
@@ -37,6 +41,10 @@ html {
     }
 
     &[data-mode='anco'] {
+      @include anco.styles;
+    }
+
+    &[data-mode='console'] {
       @include anco.styles;
     }
   }

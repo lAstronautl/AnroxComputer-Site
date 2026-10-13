@@ -7,19 +7,107 @@
   font-size: 0.9rem;
 }
 
-.rp-console-sound-toggle {
-  display: block;
-  margin-left: auto;
-  padding: 0.2rem 0.7rem;
-  border: 1px solid var(--main-border-color, #3a0000);
-  border-radius: 0.4rem;
-  background: transparent;
-  color: var(--text-muted-color);
-  font-size: 0.8rem;
-  cursor: pointer;
+/* Volume knob (console window and, in the console theme, the site sidebar) */
+.rp-knob {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #ff6b6b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 6px rgb(255 59 59 / 55%);
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
 
-  &:hover {
-    color: var(--heading-color);
+  &[hidden] {
+    display: none;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  .rp-knob-label {
+    color: #b45a5a;
+  }
+
+  .rp-knob-value {
+    min-width: 2.6em;
+    text-align: right;
+  }
+
+  .rp-knob-dial {
+    position: relative;
+    flex: 0 0 auto;
+    width: 2.1rem;
+    height: 2.1rem;
+    border: 1px solid #5a2323;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #3a1414, #120505 72%);
+    box-shadow:
+      0 0 0 2px #1a0707,
+      inset 0 0 6px rgb(0 0 0 / 80%),
+      0 0 10px rgb(255 59 59 / 25%);
+
+    /* the scale: eleven notches around the dial, from 0 to 100% */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -7px;
+      border-radius: 50%;
+      background: repeating-conic-gradient(from -137deg, #b45a5a 0 2deg, transparent 2deg 27deg);
+      mask:
+        radial-gradient(circle, transparent 66%, #000000 67%),
+        conic-gradient(from -137deg, #000000 0 274deg, transparent 274deg);
+      mask-composite: intersect;
+      -webkit-mask:
+        radial-gradient(circle, transparent 66%, #000000 67%),
+        conic-gradient(from -137deg, #000000 0 274deg, transparent 274deg);
+      -webkit-mask-composite: source-in;
+      opacity: 0.85;
+    }
+  }
+
+  .rp-knob-needle {
+    position: absolute;
+    inset: 0;
+    transform: rotate(var(--knob-angle, 0deg));
+    transition: transform 0.08s ease-out;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 12%;
+      left: 50%;
+      width: 2px;
+      height: 34%;
+      margin-left: -1px;
+      border-radius: 1px;
+      background: #ff6b6b;
+      box-shadow: 0 0 5px #ff3b3b;
+    }
+  }
+
+  &:hover .rp-knob-dial,
+  &:focus-visible .rp-knob-dial {
+    border-color: #ff6b6b;
+  }
+}
+
+/* the sidebar version is small and has no text */
+.rp-knob-mini {
+  margin: 0 0.35rem;
+
+  .rp-knob-dial {
+    width: 1.5rem;
+    height: 1.5rem;
+
+    &::before {
+      inset: -5px;
+    }
   }
 }
 
@@ -41,6 +129,13 @@
   &:hover,
   &:focus-visible {
     color: #fff1f1;
+    outline: none;
+  }
+
+  /* the letter-spacing is too wide for a phone */
+  @media (max-width: 480px) {
+    letter-spacing: 0.05em;
+    font-size: 0.9rem;
   }
 }
 
@@ -106,6 +201,14 @@
     text-shadow: 0 0 6px rgb(255 59 59 / 55%);
   }
 
+  /* phones: a smaller font gives ~45 columns instead of ~33, so tables and the boot lines do not wrap */
+  @media (max-width: 480px) {
+    .wterm {
+      --term-font-size: 12px;
+      --term-row-height: 15px;
+    }
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .wterm {
       animation: rp-console-flicker 6s infinite steps(1);
@@ -150,5 +253,85 @@
   &.rp-flash-fade {
     opacity: 0;
     transition: opacity 5s ease-out;
+  }
+}
+
+/* The console is a separate full-window page (like the document editor): no sidebar, the terminal fills the window */
+html:has(.console-window),
+body:has(.console-window) {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #050000;
+}
+
+.console-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: #050000;
+
+  .console-window-bar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.45rem 0.8rem;
+    border-bottom: 1px solid #3a1414;
+    color: #ff6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    text-shadow: 0 0 6px rgb(255 59 59 / 55%);
+
+    a {
+      color: inherit;
+      text-decoration: none;
+
+      &:hover,
+      &:focus-visible {
+        color: #fff1f1;
+      }
+    }
+  }
+
+  .console-window-title {
+    flex: 1 1 auto;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .console-window-hint {
+    color: #b45a5a;
+  }
+
+  .rp-knob {
+    flex: 0 0 auto;
+    margin-left: 0.4rem;
+  }
+
+  .rp-console {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+
+    .rp-console-screen {
+      height: 100%;
+      min-height: 0;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .console-window-hint {
+      display: none;
+    }
+
+    .console-window-bar {
+      gap: 0.6rem;
+      font-size: 0.78rem;
+    }
   }
 }

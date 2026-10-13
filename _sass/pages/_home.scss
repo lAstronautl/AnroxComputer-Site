@@ -195,3 +195,292 @@
     }
   }
 }
+
+/* Post list view switch (tiles are the main view, the old long cards stay as "list") */
+.view-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin: 1.5rem 0 -1rem;
+
+  @include bp.lg {
+    margin-top: 2rem;
+  }
+
+  .view-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--main-border-color);
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--text-muted-color);
+    font-size: 0.8rem;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--link-color);
+      border-color: var(--link-color);
+      outline: none;
+    }
+
+    &[aria-pressed='true'] {
+      color: var(--sidebar-active-color, #ffffff);
+      background: var(--sidebar-hover-bg, #620505);
+      border-color: var(--link-color);
+    }
+  }
+}
+
+/* Tiles: a grid of squares-ish cards, big picture on top, title below */
+
+/* Posts are grouped by category and the groups flow one after another in a single grid; the frame of each
+   group is drawn by tile-frames.js as an outline around its cells (edge-* / corner-* classes) */
+#post-list .tile-group-label {
+  display: none;
+}
+
+html[data-view='list'] #post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  .tile-cell {
+    display: contents;
+  }
+
+  .card-wrapper {
+    margin-bottom: 0 !important;
+  }
+}
+
+html:not([data-view='list']) #post-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+  gap: 0;
+  align-items: stretch;
+
+  @include bp.md {
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  }
+
+  .tile-cell {
+    position: relative;
+    display: flex;
+    padding: 1.1rem;
+
+    /* frame line is drawn inset, so frames of neighbouring categories stay apart */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0.45rem;
+      border: 1px solid transparent;
+      pointer-events: none;
+    }
+
+    &:not(.edge-t)::before {
+      top: 0;
+    }
+
+    &:not(.edge-b)::before {
+      bottom: 0;
+    }
+
+    &:not(.edge-l)::before {
+      left: 0;
+    }
+
+    &:not(.edge-r)::before {
+      right: 0;
+    }
+
+    &.edge-t::before {
+      border-top-color: var(--heading-color);
+    }
+
+    &.edge-b::before {
+      border-bottom-color: var(--heading-color);
+    }
+
+    &.edge-l::before {
+      border-left-color: var(--heading-color);
+    }
+
+    &.edge-r::before {
+      border-right-color: var(--heading-color);
+    }
+
+    &.corner-tl::before {
+      border-top-left-radius: 0.7rem;
+    }
+
+    &.corner-tr::before {
+      border-top-right-radius: 0.7rem;
+    }
+
+    &.corner-bl::before {
+      border-bottom-left-radius: 0.7rem;
+    }
+
+    &.corner-br::before {
+      border-bottom-right-radius: 0.7rem;
+    }
+
+    /* concave corner of an L-shaped frame: an arc whose straight ends lie on the frame lines of the
+       neighbouring cells (box reaches out of the cell by radius - inset) */
+    &[class*='inner-']::after {
+      content: '';
+      position: absolute;
+      width: calc(0.7rem + 1px);
+      height: calc(0.7rem + 1px);
+      border: 0 solid var(--heading-color);
+      pointer-events: none;
+    }
+
+    &.inner-tl::after {
+      top: -0.25rem;
+      left: -0.25rem;
+      border-width: 0 1px 1px 0;
+      border-bottom-right-radius: 0.7rem;
+    }
+
+    &.inner-tr::after {
+      top: -0.25rem;
+      right: -0.25rem;
+      border-width: 0 0 1px 1px;
+      border-bottom-left-radius: 0.7rem;
+    }
+
+    &.inner-bl::after {
+      bottom: -0.25rem;
+      left: -0.25rem;
+      border-width: 1px 1px 0 0;
+      border-top-right-radius: 0.7rem;
+    }
+
+    &.inner-br::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+      border-width: 1px 0 0 1px;
+      border-top-left-radius: 0.7rem;
+    }
+  }
+
+  /* the category name sits on the bottom edge of the frame, at its left */
+  .tile-group-label {
+    position: absolute;
+    left: 1.6rem;
+    bottom: -0.2rem;
+    z-index: 1;
+    display: block;
+    padding: 0 0.6rem;
+    background: var(--main-bg);
+    color: var(--heading-color);
+    font-size: 0.72rem;
+    line-height: 1.3rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .tile-cell > .card-wrapper {
+    width: 100%;
+  }
+
+  .card-wrapper {
+    display: flex;
+    min-width: 0;
+    margin: 0 !important;
+
+    &:not(:last-child) {
+      margin-bottom: 0 !important;
+    }
+  }
+
+  .card {
+    width: 100%;
+  }
+
+  .post-preview {
+    flex-direction: column !important;
+    flex-wrap: nowrap;
+    width: 100%;
+    height: 100%;
+
+    .col-md-5,
+    .col-md-7 {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .col-md-7 {
+      flex: 1 1 auto;
+    }
+
+    /* the picture: one shape for all tiles */
+    .col-md-5 {
+      height: 9.5rem;
+      overflow: hidden;
+
+      @include bp.md {
+        height: 11rem;
+      }
+
+      /* the tile can be any width, so the picture keeps its own proportions inside a fixed-height frame */
+      > img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: v.$radius-lg v.$radius-lg 0 0;
+      }
+    }
+
+    .card-body {
+      padding: 0.7rem 0.85rem 0.8rem;
+
+      @include bp.md {
+        padding: 0.9rem 1rem 1rem;
+      }
+
+      .card-title {
+        margin: 0 0 0.3rem !important;
+        font-size: 0.9rem;
+        line-height: 1.25;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+
+        @include bp.md {
+          font-size: 0.98rem;
+        }
+      }
+
+      /* tiles show no description: the picture and the title are the tile */
+      .card-text {
+        display: none !important;
+      }
+
+      /* the category is already written on the frame around the group */
+      .post-meta {
+        font-size: 0.7rem;
+
+        .me-auto {
+          display: none;
+        }
+      }
+    }
+  }
+}
+
+/* tiles not yet reached by the infinite feed */
+#post-list .tile-cell.feed-hidden {
+  display: none !important;
+}
+
+.feed-sentinel {
+  height: 1px;
+}
