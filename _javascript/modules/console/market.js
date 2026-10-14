@@ -201,7 +201,7 @@ export function playMarket(shell) {
       if (data) {
         const wait = Math.max(0, data.nextIn - (Date.now() - fetchedAt));
         const filled = Math.max(0, Math.min(10, Math.round(10 - (wait / data.tickMs) * 10)));
-        lines.push(c.red('━'.repeat(cols - 14)) + c.grey(` тик ${c.red('▰'.repeat(filled))}${'▱'.repeat(10 - filled)}`).slice(0, 200));
+        lines.push(c.red('━'.repeat(cols - 14)) + c.grey(` обновление ${c.red('▰'.repeat(filled))}${'▱'.repeat(10 - filled)}`).slice(0, 200));
       } else {
         lines.push(c.red('━'.repeat(cols)));
       }
@@ -266,7 +266,7 @@ export function playMarket(shell) {
       // the journal on the right of the whole screen
       if (panelWidth) {
         const column = width + 3;
-        const panel = [c.bold(c.red('ИСТОРИЯ СДЕЛОК')) + c.grey('  кто, сколько, по какой цене'), c.red('─'.repeat(panelWidth)), tradeHeader];
+        const panel = [c.bold(c.red('ИСТОРИЯ СДЕЛОК')), c.red('─'.repeat(panelWidth)), tradeHeader];
         const trades = data.trades ?? [];
         for (const trade of trades) panel.push(tradeRow(trade, shell.user.name, asset.id));
         if (!trades.length) panel.push(c.grey('пока никто не торговал'));

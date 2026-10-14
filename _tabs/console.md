@@ -8,9 +8,8 @@ compress_html: false
 
 <div class="console-window">
   <header class="console-window-bar">
-    <a class="console-window-back" href="{{ '/' | relative_url }}">◄ На сайт</a>
-    <span class="console-window-title">АнКо // корпоративная консоль</span>
-    <span class="console-window-hint">help — список команд</span>
+    <a class="console-window-back" href="{{ '/' | relative_url }}">◄ Выключить консоль</a>
+    <span class="console-window-title">Anrox OS // корпоративная консоль</span>
     <div id="rp-console-sound" class="rp-knob" hidden></div>
   </header>
 
