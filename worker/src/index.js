@@ -15,6 +15,8 @@ import {
   tradeImpact,
   DEMAND_HALF_MS,
   HISTORY_TICKS,
+  LIQUIDITY,
+  MAX_IMPACT,
   TICK_MS,
   ROULETTE_BETS,
   START_BALANCE,
@@ -538,7 +540,7 @@ async function economyRoute(path, method, request, env, row) {
 
   if (path === '/api/market' && method === 'GET') {
     const state = await economyState(env, row.key);
-    return { ...snapshot(now, seed, await loadDemand(env, now), await assetsOf(env)), ...state, fee: FEE, trades: await recentTrades(env), editor: row.level >= MARKET_ADMIN_LEVEL };
+    return { ...snapshot(now, seed, await loadDemand(env, now), await assetsOf(env)), ...state, fee: FEE, liquidity: LIQUIDITY, maxImpact: MAX_IMPACT, trades: await recentTrades(env), editor: row.level >= MARKET_ADMIN_LEVEL };
   }
 
   if (path === '/api/market/trade' && method === 'POST') {

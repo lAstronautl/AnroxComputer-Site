@@ -101,9 +101,9 @@ function marketPrice(asset, tick, seed, events, at) {
   return Math.max(1, Math.round(priceAt(asset, tick, seed) * Math.exp(pressureAt(events ?? [], at)) * 100) / 100);
 }
 
-// насколько сделка на сумму `value` сдвинет цену (с небольшим случайным разбросом)
-function tradeImpact(value, rng = randomFloat) {
-  return Math.min(MAX_IMPACT, (value / LIQUIDITY) * (0.85 + rng() * 0.3));
+// насколько сделка на сумму `value` сдвинет цену; считается точно, чтобы игрок заранее видел итоговую сумму
+function tradeImpact(value) {
+  return Math.min(MAX_IMPACT, value / LIQUIDITY);
 }
 
 function snapshot(now, seed, demand = {}, assets = ASSETS) {
@@ -736,7 +736,7 @@ async function economyRoute(path, method, request, env, row) {
 
   if (path === '/api/market' && method === 'GET') {
     const state = await economyState(env, row.key);
-    return { ...snapshot(now, seed, await loadDemand(env, now), await assetsOf(env)), ...state, fee: FEE, trades: await recentTrades(env), editor: row.level >= MARKET_ADMIN_LEVEL };
+    return { ...snapshot(now, seed, await loadDemand(env, now), await assetsOf(env)), ...state, fee: FEE, liquidity: LIQUIDITY, maxImpact: MAX_IMPACT, trades: await recentTrades(env), editor: row.level >= MARKET_ADMIN_LEVEL };
   }
 
   if (path === '/api/market/trade' && method === 'POST') {

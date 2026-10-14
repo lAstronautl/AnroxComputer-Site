@@ -95,9 +95,9 @@ export function marketPrice(asset, tick, seed, events, at) {
   return Math.max(1, Math.round(priceAt(asset, tick, seed) * Math.exp(pressureAt(events ?? [], at)) * 100) / 100);
 }
 
-// насколько сделка на сумму `value` сдвинет цену (с небольшим случайным разбросом)
-export function tradeImpact(value, rng = randomFloat) {
-  return Math.min(MAX_IMPACT, (value / LIQUIDITY) * (0.85 + rng() * 0.3));
+// насколько сделка на сумму `value` сдвинет цену; считается точно, чтобы игрок заранее видел итоговую сумму
+export function tradeImpact(value) {
+  return Math.min(MAX_IMPACT, value / LIQUIDITY);
 }
 
 export function snapshot(now, seed, demand = {}, assets = ASSETS) {

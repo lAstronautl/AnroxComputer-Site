@@ -88,6 +88,27 @@ export async function claimDole(shell) {
   }
 }
 
+/* ---------- what a trade costs (the same arithmetic as the server) ---------- */
+
+// a big order moves the price and is filled at the average of the price before and after
+function quoteTrade(data, asset, side, qty) {
+  const impact = Math.min(data.maxImpact ?? 0.07, (asset.price * qty) / (data.liquidity ?? 20000));
+  const price = asset.price * Math.exp(side === 'buy' ? impact / 2 : -impact / 2);
+  return side === 'buy' ? Math.ceil(price * qty * (1 + data.fee)) : Math.floor(price * qty * (1 - data.fee));
+}
+
+// the most the player can buy; a little spare for a price that ticks while the order is on its way
+function maxBuy(data, asset) {
+  let low = 0;
+  let high = Math.floor(data.balance / asset.price) + 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (quoteTrade(data, asset, 'buy', mid) * 1.004 <= data.balance) low = mid;
+    else high = mid - 1;
+  }
+  return low;
+}
+
 /* ---------- market editor (top level only) ---------- */
 
 export const EDIT_HELP = [
@@ -282,10 +303,10 @@ export function playMarket(shell) {
         lines.push(c.grey(' shock GNG +20 · base SUBE 150 · vol ENDI 0.9 · add NEWC "Имя" Группа акции 50 · remove NEWC · reset GNG · Esc'));
       } else if (order) {
         const qty = Number(order.text || 0);
-        const total = order.side === 'buy' ? Math.ceil(asset.price * qty * (1 + data.fee)) : Math.floor(asset.price * qty * (1 - data.fee));
+        const total = quoteTrade(data, asset, order.side, qty);
         const verb = order.side === 'buy' ? c.green('КУПИТЬ') : c.red('ПРОДАТЬ');
         lines.push(` ${verb} ${c.bold(c.bright(asset.id))} × ${c.inverse(` ${order.text || '0'} `)}  ${c.grey('≈')} ${c.amber(money(total))}`);
-        const max = order.side === 'buy' ? Math.floor(data.balance / (asset.price * (1 + data.fee))) : held.qty;
+        const max = order.side === 'buy' ? maxBuy(data, asset) : held.qty;
         lines.push(c.grey(` цифры — количество · M — максимум (${fmt(max)}) · Enter — подтвердить · Esc — отмена`));
       } else {
         lines.push(stale ? ` ${c.bold(c.red('Сервер биржи устарел:'))} ${c.amber('вставьте свежий worker/bundle/worker.js в Cloudflare и нажмите Deploy')}` : ` ${note}`);
@@ -392,7 +413,7 @@ export function playMarket(shell) {
         } else if (/^[0-9]$/.test(key) && order.text.length < 7) order.text = order.text === '0' ? key : order.text + key;
         else if (key === '\x7f' || key === '\b') order.text = order.text.slice(0, -1);
         else if (/^[mMьЬ]$/.test(key)) {
-          const max = order.side === 'buy' ? Math.floor(data.balance / (asset.price * (1 + data.fee))) : held.qty;
+          const max = order.side === 'buy' ? maxBuy(data, asset) : held.qty;
           order.text = String(Math.max(0, max));
         }
         paint();
