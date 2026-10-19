@@ -102,7 +102,7 @@ export async function createUser({ name, realName = '', department, password, le
     level,
     codes: [],
     attempts: [],
-    stats: { snake: 0, hacks: 0 },
+    stats: { hacks: 0 },
     registered: Date.now()
   };
   saveUsers(users);

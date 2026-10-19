@@ -9,7 +9,7 @@ import { WTerm } from '@wterm/dom';
 import { ESC, c, crlf, plainSwaps, visibleLength, withConsoleSwaps } from './ansi';
 import { buildFs } from './storage';
 import { createBackend } from './backend';
-import { playHack, playSnake } from './games';
+import { playHack } from './games';
 import { playCasino } from './casino';
 import { playMap } from './mapview';
 import { claimDole, cmdMarketEdit, playMarket, sendMoney, showTop, showWallet } from './market';
@@ -909,7 +909,7 @@ class Shell {
     this.println(`  Отдел:   ${user.department}`);
     this.println(`  Допуск:  ${c.bright(this.levelName(user.level))} (L${user.level})`);
     this.println(`  Регистрация: ${new Date(user.registered).toLocaleString('ru-RU')}`);
-    this.println(`  Рекорд «Змейки»: ${stats.snake ?? 0}   Взломов: ${stats.hacks ?? 0}`);
+    this.println(`  Взломов: ${stats.hacks ?? 0}`);
   }
 
   tag(file) {
@@ -1626,21 +1626,19 @@ class Shell {
 
   cmdGames() {
     this.println(c.bold(c.red('Игры для перерывов:')));
-    this.println(`  ${c.amber('snake')}  — «Змейка»  ${c.grey('(стрелки / WASD)')}`);
     this.println(`  ${c.amber('hack')}   — «Взлом»   ${c.grey('(найдите пароль в дампе памяти)')}`);
-    this.println(c.grey('Запуск: play snake'));
+    this.println(c.grey('Запуск: play hack'));
     this.println('');
     this.println(c.bold(c.red('На крипто-енды (КЕ):')));
     this.println(`  ${c.amber('market')}  — биржа    ${c.grey('(цены меняются каждые 5 секунд)')}`);
-    this.println(`  ${c.amber('casino')}  — казино   ${c.grey('(слоты, рулетка, кости, взлёт)')}`);
+    this.println(`  ${c.amber('casino')}  — казино   ${c.grey('(слоты, рулетка, кости, лжец, танчики, трон, змейка, взлёт)')}`);
     this.println(`  ${c.amber('wallet')}  — кошелёк  ${c.grey('(общий баланс биржи и казино)')}`);
   }
 
   async cmdPlay(args) {
     const game = (args[0] ?? '').toLowerCase();
-    if (game === 'snake' || game === 'змейка') await playSnake(this);
-    else if (game === 'hack' || game === 'взлом') await playHack(this);
-    else this.println(c.grey('Использование: play snake | play hack'));
+    if (game === 'hack' || game === 'взлом') await playHack(this);
+    else this.println(c.grey('Использование: play hack'));
   }
 
   /** Resolves once the typewriter has caught up. */
