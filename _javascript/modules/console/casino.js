@@ -6,6 +6,7 @@
 import { c, visibleLength } from './ansi';
 import { createLiarScene } from './liar';
 import { createArcadeScene } from './arcade';
+import { createSoloScene } from './solo';
 import { createTankScene } from './tanks';
 import { KEY, UNIT, at, bigText, clip, fmt, barChart, box, center, errorText, isBack, isEnter, money, openScreen, pad, signed, sgr, tooSmall } from './tui';
 
@@ -152,7 +153,7 @@ export function playCasino(shell) {
         { id: 'tanks', title: 'ТАНЧИКИ', text: 'Battle City на 2–4 игроков: WASD — ехать, стрелки — стрелять. Банк — победителю.', tag: '▲ ■' },
         { id: 'tron', title: 'ТРОН', text: 'Световые мотоциклы на 2–4 игроков: не врезайтесь в следы. Банк — победителю.', tag: '▓▓►' },
         { id: 'snake', title: 'ЗМЕЙКА', text: 'Змейки на общей арене на 2–4 игроков со ставками. Кто выжил — берёт банк.', tag: '▓▓▓●' },
-        { id: 'solo', title: 'ЗМЕЙКА: СОЛО', text: 'Бесплатный забег в одиночку: каждое яблоко приносит крипто-енды.', tag: '+2 КЕ' },
+        { id: 'solo', title: 'ЗМЕЙКА: СОЛО', text: 'Классическая змейка прямо в консоли, без лагов: яблоко — 2 КЕ.', tag: '+2 КЕ' },
         { id: 'crash', title: 'ВЗЛЁТ', text: 'Общий раунд: ставят все вместе, множитель растёт — успейте забрать.', tag: '▁▃▅█' }
       ];
       const roomy = rows >= 52;
@@ -715,13 +716,19 @@ export function playCasino(shell) {
       return createLiarScene({ api, repaint, every, header, footer, go, cols, rows, tick });
     }
 
+    async function claim(apples) {
+      const result = await shell.backend.call('POST', '/api/wallet/solo', { apples });
+      if (typeof result.balance === 'number') ctx.balance = result.balance;
+      return result;
+    }
+
     const arcadeEnv = { api, repaint, every, header, footer, go, cols, rows, tick };
 
     function tanks() {
       return createTankScene({ api, repaint, every, header, footer, go, cols, rows, tick });
     }
 
-    const SCENES = { lobby, slots, roulette, dice, crash, liar, tanks, tron: () => createArcadeScene(arcadeEnv, 'tron'), snake: () => createArcadeScene(arcadeEnv, 'snake'), solo: () => createArcadeScene(arcadeEnv, 'solo') };
+    const SCENES = { lobby, slots, roulette, dice, crash, liar, tanks, tron: () => createArcadeScene(arcadeEnv, 'tron'), snake: () => createArcadeScene(arcadeEnv, 'snake'), solo: () => createSoloScene({ ...arcadeEnv, claim }) };
 
     /* ---------- start ---------- */
 

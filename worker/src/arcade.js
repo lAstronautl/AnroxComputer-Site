@@ -10,9 +10,6 @@ export const ARCADE_LOG = 20;
 export const TRON_MAX_TICKS = 480;
 export const SNAKE_MAX_TICKS = 480;
 export const SNAKE_START_LEN = 3;
-export const SOLO_MAX_TICKS = 1200; // five minutes of one-player snake
-export const SOLO_PER_FOOD = 2; // crypto-ends per apple
-export const SOLO_CAP = 50; // the most one run can pay
 
 const ARC_DIRS = { U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0] };
 const ARC_OPPOSITE = { U: 'D', D: 'U', L: 'R', R: 'L' };
@@ -90,9 +87,8 @@ function arcBase(kind, players, mapId, stake, now) {
   };
 }
 
-export function arcadeStart(kind, players, mapId, stake, now, solo = false) {
+export function arcadeStart(kind, players, mapId, stake, now) {
   const state = arcBase(kind, players, mapId, stake, now);
-  state.solo = solo;
   if (kind === 'tron') {
     state.trail = arcBlank(); // the seat digit where a light wall stands
     state.players.forEach((player, seat) => arcTrail(state, player.x, player.y, String(seat)));
@@ -167,13 +163,7 @@ function arcKill(state, seat, reason) {
   }
 }
 
-export const soloReward = (state) => (state.solo ? Math.min(SOLO_CAP, state.scores[0] * SOLO_PER_FOOD) : 0);
-
 function arcJudge(state, diedNow) {
-  if (state.solo) {
-    if (!state.players[0].alive || state.tick - ARCADE_COUNTDOWN >= SOLO_MAX_TICKS) arcFinish(state, []);
-    return;
-  }
   const alive = arcAlive(state);
   if (alive.length === 1) arcFinish(state, alive);
   else if (alive.length === 0) arcFinish(state, diedNow); // everyone fell in the same tick: a draw
@@ -306,15 +296,13 @@ export function arcadeView(state, key, now) {
     grid: state.grid,
     tick: state.tick,
     countdown: Math.max(0, ARCADE_COUNTDOWN - state.tick),
-    timeLeft: Math.max(0, (state.solo ? SOLO_MAX_TICKS : state.kind === 'tron' ? TRON_MAX_TICKS : SNAKE_MAX_TICKS) - Math.max(0, state.tick - ARCADE_COUNTDOWN)),
+    timeLeft: Math.max(0, (state.kind === 'tron' ? TRON_MAX_TICKS : SNAKE_MAX_TICKS) - Math.max(0, state.tick - ARCADE_COUNTDOWN)),
     tickMs: ARCADE_TICK_MS,
     now,
     nextTick: state.nextTick,
     me: state.players.findIndex((player) => player.key === key),
     stake: state.stake,
     pot: state.pot,
-    solo: state.solo,
-    reward: soloReward(state),
     over: state.over,
     winners: state.winners,
     players: state.players.map((player, seat) => ({

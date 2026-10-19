@@ -6,7 +6,7 @@
 
 import { ACTIONS, ADMIN_LEVEL, MARKET_ADMIN_LEVEL, MAX_LEVEL } from './config.js';
 import { liarCall, liarForfeit, liarPlay, liarStart, liarTimeout, liarView } from './liar.js';
-import { ARCADE_MAPS, arcadeAdvance, arcadeForfeit, arcadeStart, arcadeView, soloReward } from './arcade.js';
+import { ARCADE_MAPS, arcadeAdvance, arcadeForfeit, arcadeStart, arcadeView } from './arcade.js';
 import { TANK_MAPS, isDir, tankAdvance, tankForfeit, tankStart, tankView } from './tanks.js';
 import {
   ASSETS,
@@ -306,6 +306,7 @@ let economyReady = false;
 async function ensureEconomy(env) {
   if (economyReady) return;
   await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS solo_claims (user_key TEXT PRIMARY KEY, t INTEGER NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS wallets (user_key TEXT PRIMARY KEY, balance INTEGER NOT NULL, dole_at INTEGER NOT NULL DEFAULT 0)'),
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS holdings (user_key TEXT NOT NULL, asset TEXT NOT NULL, qty INTEGER NOT NULL, cost INTEGER NOT NULL, PRIMARY KEY (user_key, asset))'
@@ -691,9 +692,7 @@ async function liarRoute(game, env, row, body, now) {
 const ARENAS = {
   tank: { maps: TANK_MAPS, start: tankStart, advance: tankAdvance, forfeit: tankForfeit, view: tankView },
   tron: { maps: ARCADE_MAPS, start: (...args) => arcadeStart('tron', ...args), advance: arcadeAdvance, forfeit: arcadeForfeit, view: arcadeView },
-  snake: { maps: ARCADE_MAPS, start: (...args) => arcadeStart('snake', ...args), advance: arcadeAdvance, forfeit: arcadeForfeit, view: arcadeView },
-  // one-player snake: free to play, pays crypto-ends for every apple
-  solo: { maps: ARCADE_MAPS, start: (players, map, stake, now) => arcadeStart('snake', players, map, stake, now, true), advance: arcadeAdvance, forfeit: arcadeForfeit, view: arcadeView }
+  snake: { maps: ARCADE_MAPS, start: (...args) => arcadeStart('snake', ...args), advance: arcadeAdvance, forfeit: arcadeForfeit, view: arcadeView }
 };
 
 const TANK_OPEN_MS = 20 * 60 * 1000;
@@ -722,10 +721,6 @@ async function tankCancel(env, lobby, now) {
 
 // the pot goes to the winner, or is shared by tanks that finished equal; a remainder smaller than a share is burnt
 async function tankPayout(env, state) {
-  if (state.solo) {
-    await giveMoney(env, state.players[0].key, soloReward(state));
-    return;
-  }
   if (!state.winners.length) return;
   const share = Math.floor(state.pot / state.winners.length);
   for (const seat of state.winners) await giveMoney(env, state.players[seat].key, share);
@@ -821,20 +816,6 @@ async function tankRoute(game, env, row, body, now) {
       mine = await tankMine(env, key, now);
     }
     return tankSnapshot(env, mine, key, now);
-  }
-
-  if (action === 'create' && kind === 'solo') {
-    const map = String(body.map ?? 'open');
-    if (!arena.maps[map]) throw new ApiError(400, 'bad-value');
-    await balanceOf(env, key);
-    const active = await tankMine(env, key, now);
-    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
-    const state = arena.start([{ key, name: row.name }], map, 0, now);
-    const created = await env.DB.prepare('INSERT INTO tank_lobbies (owner_key, owner_name, stake, max, map, kind, status, created, state) VALUES (?, ?, 0, 1, ?, \'solo\', \'playing\', ?, ?)').bind(key, row.name, map, now, JSON.stringify(state)).run();
-    if (!created.meta.changes) throw new ApiError(500, 'server');
-    const lobby = await env.DB.prepare('SELECT id FROM tank_lobbies WHERE owner_key = ? ORDER BY id DESC LIMIT 1').bind(key).first();
-    await env.DB.prepare('INSERT INTO tank_players (lobby, user_key, name) VALUES (?, ?, ?)').bind(lobby.id, key, row.name).run();
-    return tankSnapshot(env, await tankMine(env, key, now), key, now);
   }
 
   if (action === 'create') {
@@ -1083,6 +1064,21 @@ async function economyRoute(path, method, request, env, row) {
     return { sent: { to: target.name, amount }, balance: await balanceOf(env, row.key) };
   }
 
+  // «Змейка: соло» runs in the player's console, so the server only caps what a run may pay:
+  // 2 КЕ per apple, 50 КЕ per run and no more than 1 КЕ per second since the previous payout
+  if (path === '/api/wallet/solo' && method === 'POST') {
+    const body = await readBody(request);
+    const apples = Math.floor(Number(body.apples));
+    if (!Number.isFinite(apples) || apples < 0 || apples > 1000) throw new ApiError(400, 'bad-value');
+    await balanceOf(env, row.key);
+    const last = await env.DB.prepare('SELECT t FROM solo_claims WHERE user_key = ?').bind(row.key).first();
+    const seconds = Math.floor((now - (last?.t ?? now - 60000)) / 1000);
+    const reward = Math.max(0, Math.min(50, apples * 2, seconds));
+    await env.DB.prepare('INSERT INTO solo_claims (user_key, t) VALUES (?, ?) ON CONFLICT (user_key) DO UPDATE SET t = excluded.t').bind(row.key, now).run();
+    await giveMoney(env, row.key, reward);
+    return { reward, balance: await balanceOf(env, row.key) };
+  }
+
   if (path === '/api/wallet/dole' && method === 'POST') {
     const balance = await balanceOf(env, row.key);
     if (balance >= DOLE_LIMIT) throw new ApiError(409, 'no-dole');
@@ -1153,7 +1149,7 @@ async function economyRoute(path, method, request, env, row) {
   }
 
   if (game.startsWith('liar/')) return liarRoute(game, env, row, body, now);
-  if (/^(tank|tron|snake|solo)\//.test(game)) return tankRoute(game, env, row, body, now);
+  if (/^(tank|tron|snake)\//.test(game)) return tankRoute(game, env, row, body, now);
 
   if (game === 'crash/state') return crashState(env, row, now);
 
