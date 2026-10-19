@@ -5,6 +5,7 @@
 
 import { c, visibleLength } from './ansi';
 import { createLiarScene } from './liar';
+import { createTankScene } from './tanks';
 import { KEY, UNIT, at, bigText, clip, fmt, barChart, box, center, errorText, isBack, isEnter, money, openScreen, pad, signed, sgr, tooSmall } from './tui';
 
 const BETS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
@@ -147,6 +148,7 @@ export function playCasino(shell) {
         { id: 'roulette', title: 'РУЛЕТКА', text: 'Европейская, один ноль. Цвет ×2, число ×36.', tag: '● ● 0' },
         { id: 'dice', title: 'КОСТИ', text: 'Меньше или больше — шанс и выплата на ваш выбор.', tag: '⚀ ⚃ ⚅' },
         { id: 'liar', title: 'ЛЖЕЦ', text: 'Колода лжеца: общие лобби, блеф, револьвер. Победитель берёт банк.', tag: '♠' },
+        { id: 'tanks', title: 'ТАНЧИКИ', text: 'Battle City на 2–4 игроков: WASD — ехать, стрелки — стрелять. Банк — победителю.', tag: '▲ ■' },
         { id: 'crash', title: 'ВЗЛЁТ', text: 'Общий раунд: ставят все вместе, множитель растёт — успейте забрать.', tag: '▁▃▅█' }
       ];
       const roomy = rows >= 40;
@@ -182,14 +184,14 @@ export function playCasino(shell) {
 
           lines.push('', center(c.grey('Пособие: раз в 10 минут, если на счёте меньше 100 КЕ — команда dole'), cols));
           while (lines.length < rows - 1) lines.push('');
-          lines.push(...footer('↑↓ выбор · 1–5 / Enter — играть · Esc — выйти из казино'));
+          lines.push(...footer('↑↓ выбор · 1–6 / Enter — играть · Esc — выйти из казино'));
           return lines;
         },
         key(key) {
           if (isBack(key)) finish();
           else if (key === KEY.up) selected = (selected + GAMES.length - 1) % GAMES.length;
           else if (key === KEY.down || key === '\t') selected = (selected + 1) % GAMES.length;
-          else if (/^[1-5]$/.test(key)) {
+          else if (/^[1-6]$/.test(key)) {
             go(GAMES[Number(key) - 1].id);
             return;
           } else if (isEnter(key)) {
@@ -709,7 +711,11 @@ export function playCasino(shell) {
       return createLiarScene({ api, repaint, every, header, footer, go, cols, rows, tick });
     }
 
-    const SCENES = { lobby, slots, roulette, dice, crash, liar };
+    function tanks() {
+      return createTankScene({ api, repaint, every, header, footer, go, cols, rows, tick });
+    }
+
+    const SCENES = { lobby, slots, roulette, dice, crash, liar, tanks };
 
     /* ---------- start ---------- */
 
