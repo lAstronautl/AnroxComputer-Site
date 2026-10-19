@@ -1190,7 +1190,9 @@ async function startSession(env, row) {
 
 async function authenticate(request, env) {
   const header = request.headers.get('Authorization') ?? '';
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  let token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  // a browser cannot set headers on a WebSocket, so the socket carries the token in its address
+  if (!token && new URL(request.url).pathname === '/api/ws') token = new URL(request.url).searchParams.get('token') ?? '';
   if (!token) throw new ApiError(401, 'unauthorized');
 
   const session = await env.DB.prepare('SELECT user_key, expires FROM sessions WHERE token_hash = ?')
@@ -1816,6 +1818,136 @@ async function tankSnapshot(env, row, key, now) {
   return { balance, lobby: { id: fresh.id, status: fresh.status, max: fresh.max, owner: fresh.owner_name, ...ARENAS[fresh.kind].view(JSON.parse(fresh.state), key, now) } };
 }
 
+/* ---------- live rooms: a Durable Object per battle, WebSocket instead of polling ---------- */
+
+// Without the ARENA binding everything above keeps working through polling; with it a battle lives in memory
+// of one object that ticks by itself and pushes the state to every player, and D1 is written only now and then.
+/* global WebSocketPair */
+export class ArenaRoom {
+  constructor(ctx, env) {
+    this.env = env;
+    this.sockets = new Map();
+    this.game = null;
+    this.row = null;
+    this.timer = 0;
+    this.ticks = 0;
+  }
+
+  async load(id) {
+    if (this.game) return !this.game.over;
+    const row = await this.env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ?').bind(id).first();
+    if (!row || row.status !== 'playing') return false; // finished battles are served from D1
+    this.row = row;
+    this.game = JSON.parse(row.state);
+    this.arena = ARENAS[row.kind];
+    this.timer = setInterval(() => void this.run(), 50);
+    return true;
+  }
+
+  lobbyFor(key, now) {
+    return { id: this.row.id, status: this.game.over ? 'done' : 'playing', max: this.row.max, owner: this.row.owner_name, ...this.arena.view(this.game, key, now) };
+  }
+
+  broadcast(now) {
+    for (const [socket, key] of this.sockets) {
+      try {
+        socket.send(JSON.stringify({ lobby: this.lobbyFor(key, now) }));
+      } catch {
+        this.sockets.delete(socket);
+      }
+    }
+  }
+
+  apply(key, body) {
+    const seat = this.game.players.findIndex((player) => player.key === key);
+    if (seat < 0 || this.game.over) return;
+    if (this.row.kind === 'tank') tankInput(this.game, seat, isDir(body.move) ? body.move : null, isDir(body.fire) ? body.fire : null);
+    else arcadeInput(this.game, seat, body.move);
+  }
+
+  async run() {
+    if (this.busy || !this.game || this.game.over) return;
+    const now = Date.now();
+    if (!this.arena.advance(this.game, now, [])) return;
+    this.ticks += 1;
+    this.broadcast(now);
+    this.busy = true;
+    try {
+      if (this.game.over) await this.finish(now);
+      else if (this.ticks % 8 === 0) await this.save();
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  async save() {
+    await this.env.DB.prepare('UPDATE tank_lobbies SET state = ?, rev = rev + 1 WHERE id = ? AND status = \'playing\'').bind(JSON.stringify(this.game), this.row.id).run();
+  }
+
+  async finish(now) {
+    clearInterval(this.timer);
+    this.timer = 0;
+    const saved = await this.env.DB.prepare('UPDATE tank_lobbies SET state = ?, rev = rev + 1, status = \'done\', ended = ? WHERE id = ? AND status = \'playing\'')
+      .bind(JSON.stringify(this.game), now, this.row.id)
+      .run();
+    if (saved.meta.changes) await tankPayout(this.env, this.game);
+  }
+
+  async fetch(request) {
+    const id = Number(new URL(request.url).searchParams.get('id'));
+    const key = decodeURIComponent(request.headers.get('x-arena-key') ?? '');
+    const live = await this.load(id);
+
+    if (request.headers.get('Upgrade') === 'websocket') {
+      if (!live) return new Response('finished', { status: 409 });
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      server.accept();
+      this.sockets.set(server, key);
+      server.addEventListener('message', (event) => {
+        try {
+          this.apply(key, JSON.parse(String(event.data)));
+        } catch {
+          // a garbled message is ignored
+        }
+      });
+      const drop = () => this.sockets.delete(server);
+      server.addEventListener('close', drop);
+      server.addEventListener('error', drop);
+      server.send(JSON.stringify({ lobby: this.lobbyFor(key, Date.now()) }));
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (!live && !this.game) return Response.json({ lobby: null });
+    const body = await request.json().catch(() => ({}));
+    if (body.op === 'input') this.apply(key, body);
+    if (body.op === 'leave' && !this.game.over) {
+      this.arena.forfeit(this.game, this.game.players.findIndex((player) => player.key === key));
+      this.broadcast(Date.now());
+      if (this.game.over) await this.finish(Date.now());
+    }
+    return Response.json({ lobby: this.lobbyFor(key, Date.now()) });
+  }
+}
+
+async function arenaCall(env, lobby, key, payload) {
+  const stub = env.ARENA.get(env.ARENA.idFromName(`lobby-${lobby.id}`));
+  const response = await stub.fetch(`https://arena/?id=${lobby.id}`, { method: 'POST', headers: { 'x-arena-key': encodeURIComponent(key) }, body: JSON.stringify(payload) });
+  return response.json();
+}
+
+async function socketRoute(request, env) {
+  const url = new URL(request.url);
+  const ok = corsHeaders(request, env)['Access-Control-Allow-Origin'];
+  if (!ok) return new Response('forbidden', { status: 403 });
+  if (!env.ARENA || request.headers.get('Upgrade') !== 'websocket') return new Response('no live rooms', { status: 426 });
+  const { row } = await authenticate(request, env);
+  const mine = await tankMine(env, row.key, Date.now());
+  if (!mine || mine.status !== 'playing' || mine.kind !== url.searchParams.get('game')) return new Response('no battle', { status: 409 });
+  const stub = env.ARENA.get(env.ARENA.idFromName(`lobby-${mine.id}`));
+  return stub.fetch(`https://arena/?id=${mine.id}`, { headers: { Upgrade: 'websocket', 'x-arena-key': encodeURIComponent(row.key) } });
+}
+
 async function tankRoute(game, env, row, body, now) {
   const key = row.key;
   const [kind, action] = game.split('/');
@@ -1837,6 +1969,10 @@ async function tankRoute(game, env, row, body, now) {
   if (action === 'state') {
     let mine = await tankMine(env, key, now);
     if (mine && mine.kind !== kind) return { lobby: null, balance: await balanceOf(env, key), busy: mine.kind };
+    if (mine?.status === 'playing' && env.ARENA) {
+      const live = await arenaCall(env, mine, key, { op: 'state' });
+      if (live.lobby) return { balance: await balanceOf(env, key), lobby: live.lobby };
+    }
     if (mine) {
       await tankSettle(env, mine, now);
       mine = await tankMine(env, key, now);
@@ -1894,10 +2030,13 @@ async function tankRoute(game, env, row, body, now) {
         if (left.meta.changes) await giveMoney(env, key, mine.stake);
       }
     } else if (mine.status === 'playing') {
-      await tankMutate(env, mine.id, now, (state) => {
-        const seat = state.players.findIndex((player) => player.key === key);
-        ARENAS[mine.kind].forfeit(state, seat);
-      });
+      if (env.ARENA) await arenaCall(env, mine, key, { op: 'leave' });
+      else {
+        await tankMutate(env, mine.id, now, (state) => {
+          const seat = state.players.findIndex((player) => player.key === key);
+          ARENAS[mine.kind].forfeit(state, seat);
+        });
+      }
       await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
     } else {
       await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
@@ -1921,6 +2060,10 @@ async function tankRoute(game, env, row, body, now) {
   }
 
   if (action === 'input') {
+    if (mine.status === 'playing' && env.ARENA) {
+      const live = await arenaCall(env, mine, key, { op: 'input', move: body.move, fire: body.fire });
+      if (live.lobby) return { balance: await balanceOf(env, key), lobby: live.lobby };
+    }
     if (mine.status === 'playing') {
       const move = isDir(body.move) ? body.move : null;
       const fire = isDir(body.fire) ? body.fire : null;
@@ -2478,6 +2621,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
 
     try {
+      if (new URL(request.url).pathname === '/api/ws') return await socketRoute(request, env);
       return reply(request, env, await route(request, env));
     } catch (error) {
       if (error instanceof ApiError) return reply(request, env, { error: error.code }, error.status);

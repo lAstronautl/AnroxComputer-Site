@@ -4,6 +4,7 @@
  */
 
 import { c } from './ansi';
+import { createLive } from './live';
 import { KEY, box, center, clip, errorText, fmt, isBack, isEnter, money, pad, sgr } from './tui';
 
 const STAKES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
@@ -17,7 +18,7 @@ const TITLES = {
 };
 
 export function createArcadeScene(env, kind) {
-  const { api, repaint, every, header, footer, go, cols, rows, tick } = env;
+  const { api, repaint, every, header, footer, go, cols, rows, tick, socket } = env;
   const info = TITLES[kind];
   const side = cols >= 72;
 
@@ -39,11 +40,21 @@ export function createArcadeScene(env, kind) {
   let flight = false;
   let pending = null;
   let phase = 0;
+  const live = createLive(socket, kind, (lobby) => {
+    state = lobby;
+    repaint();
+  });
+
+  // the socket lives only while a battle is on
+  function sync() {
+    if (state?.status === 'playing' && !state.over) live.connect();
+    else live.close();
+  }
 
   const tone = (seat, text) => sgr(`1;${SEAT[seat] ?? '97'}`, text);
 
   async function refresh() {
-    if (busy || flight) return;
+    if (busy || flight || (live.fresh && state?.status === 'playing')) return;
     flight = true;
     const answer = await api(`${kind}/state`);
     flight = false;
@@ -69,6 +80,7 @@ export function createArcadeScene(env, kind) {
     if (flight || !pending || state?.status !== 'playing') return;
     const body = pending;
     pending = null;
+    if (live.send(body)) return;
     flight = true;
     const answer = await api(`${kind}/input`, body);
     flight = false;
@@ -228,6 +240,7 @@ export function createArcadeScene(env, kind) {
       void refresh().then(repaint);
       every(260, async () => {
         phase += 1;
+        sync();
         if (pending) await sendInput();
         else await refresh();
         repaint();
@@ -300,6 +313,7 @@ export function createArcadeScene(env, kind) {
   };
 
   async function leave() {
+    live.close();
     confirmLeave = false;
     pending = null;
     await act('leave');

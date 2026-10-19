@@ -5,6 +5,7 @@
  */
 
 import { c } from './ansi';
+import { createLive } from './live';
 import { KEY, box, center, clip, errorText, fmt, isBack, isEnter, money, pad, sgr } from './tui';
 
 const STAKES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
@@ -23,7 +24,7 @@ const TERRAIN = {
 };
 
 export function createTankScene(env) {
-  const { api, repaint, every, header, footer, go, cols, rows, tick } = env;
+  const { api, repaint, every, header, footer, go, cols, rows, tick, socket } = env;
   const side = cols >= 72; // the scoreboard sits right of the field, otherwise under it
 
   let lobbies = [];
@@ -40,9 +41,19 @@ export function createTankScene(env) {
   let flight = false; // an input/state request is on its way
   let pending = null; // {move, fire} keys waiting for the next send
   let phase = 0;
+  const live = createLive(socket, 'tank', (lobby) => {
+    state = lobby;
+    repaint();
+  });
+
+  // the socket lives only while a battle is on
+  function sync() {
+    if (state?.status === 'playing' && !state.over) live.connect();
+    else live.close();
+  }
 
   async function refresh() {
-    if (busy || flight) return;
+    if (busy || flight || (live.fresh && state?.status === 'playing')) return;
     flight = true;
     const answer = await api('tank/state');
     flight = false;
@@ -67,6 +78,7 @@ export function createTankScene(env) {
     if (flight || !pending || state?.status !== 'playing') return;
     const body = pending;
     pending = null;
+    if (live.send(body)) return;
     flight = true;
     const answer = await api('tank/input', body);
     flight = false;
@@ -228,6 +240,7 @@ export function createTankScene(env) {
       void refresh().then(repaint);
       every(280, async () => {
         phase += 1;
+        sync();
         if (pending) await sendInput();
         else await refresh();
         repaint();
@@ -305,6 +318,7 @@ export function createTankScene(env) {
   };
 
   async function leave() {
+    live.close();
     confirmLeave = false;
     pending = null;
     await act('tank/leave');

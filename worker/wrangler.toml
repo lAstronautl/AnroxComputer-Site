@@ -13,3 +13,13 @@ database_id = "56693669-57d6-41fd-bfa2-d19458c43d59"
 ALLOWED_ORIGINS = "https://lastronautl.github.io"
 # true — разрешить ещё и localhost (для локальной проверки сайта); в боевой версии можно убрать
 ALLOW_LOCALHOST = "true"
+
+# Живые комнаты для «Танчиков», «Трона» и «Змейки»: WebSocket вместо опроса (меньше пинг).
+# Без этой привязки игры работают как раньше — через опрос.
+[[durable_objects.bindings]]
+name = "ARENA"
+class_name = "ArenaRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ArenaRoom"]

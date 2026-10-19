@@ -715,16 +715,27 @@ export function playCasino(shell) {
       return createLiarScene({ api, repaint, every, header, footer, go, cols, rows, tick });
     }
 
+    // a WebSocket to the Worker's live rooms (none for the offline backend)
+    function socket(game) {
+      const { base, token } = shell.backend;
+      if (!base || !token || typeof WebSocket === 'undefined') return null;
+      try {
+        return new WebSocket(`${base.replace(/^http/, 'ws')}/api/ws?game=${game}&token=${encodeURIComponent(token)}`);
+      } catch {
+        return null;
+      }
+    }
+
     async function claim(apples) {
       const result = await shell.backend.call('POST', '/api/wallet/solo', { apples });
       if (typeof result.balance === 'number') ctx.balance = result.balance;
       return result;
     }
 
-    const arcadeEnv = { api, repaint, every, header, footer, go, cols, rows, tick };
+    const arcadeEnv = { api, repaint, every, header, footer, go, cols, rows, tick, socket };
 
     function tanks() {
-      return createTankScene({ api, repaint, every, header, footer, go, cols, rows, tick });
+      return createTankScene(arcadeEnv);
     }
 
     const SCENES = { lobby, slots, roulette, dice, crash, liar, tanks, tron: () => createArcadeScene(arcadeEnv, 'tron'), snake: () => createArcadeScene(arcadeEnv, 'snake'), solo: () => createSoloScene({ ...arcadeEnv, claim }) };
