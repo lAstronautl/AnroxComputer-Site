@@ -10,8 +10,6 @@ import { ARCADE_MAPS, arcadeAdvance, arcadeForfeit, arcadeStart, arcadeView } fr
 import { TANK_MAPS, isDir, tankAdvance, tankForfeit, tankStart, tankView } from './tanks.js';
 import {
   ASSETS,
-  DOLE_COOLDOWN,
-  DOLE_LIMIT,
   FEE,
   MAX_BET,
   marketPrice,
@@ -1077,19 +1075,6 @@ async function economyRoute(path, method, request, env, row) {
     await env.DB.prepare('INSERT INTO solo_claims (user_key, t) VALUES (?, ?) ON CONFLICT (user_key) DO UPDATE SET t = excluded.t').bind(row.key, now).run();
     await giveMoney(env, row.key, reward);
     return { reward, balance: await balanceOf(env, row.key) };
-  }
-
-  if (path === '/api/wallet/dole' && method === 'POST') {
-    const balance = await balanceOf(env, row.key);
-    if (balance >= DOLE_LIMIT) throw new ApiError(409, 'no-dole');
-    const result = await env.DB.prepare('UPDATE wallets SET balance = ?, dole_at = ? WHERE user_key = ? AND balance < ? AND dole_at <= ?')
-      .bind(DOLE_LIMIT, now, row.key, DOLE_LIMIT, now - DOLE_COOLDOWN)
-      .run();
-    if (!result.meta.changes) {
-      const wallet = await env.DB.prepare('SELECT dole_at FROM wallets WHERE user_key = ?').bind(row.key).first();
-      return { error: 'dole-wait', wait: Math.max(0, wallet.dole_at + DOLE_COOLDOWN - now) };
-    }
-    return { dole: DOLE_LIMIT - balance, ...(await economyState(env, row.key)) };
   }
 
   if (path === '/api/rich' && method === 'GET') {

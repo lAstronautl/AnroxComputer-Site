@@ -187,7 +187,6 @@ export function playCasino(shell) {
             else lines.push(center(`${on ? c.bold(c.amber('►')) : ' '} ${on ? c.bold(c.bright(title)) : c.amber(title)}  ${on ? game.text : c.grey(game.text)}`, cols));
           });
 
-          lines.push('', center(c.grey('Пособие: раз в 10 минут, если на счёте меньше 100 КЕ — команда dole'), cols));
           while (lines.length < rows - 1) lines.push('');
           lines.push(...footer('↑↓ выбор · 1–9 / Enter — играть · Esc — выйти из казино'));
           return lines;

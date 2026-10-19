@@ -14,8 +14,6 @@ const MAX_BET = 10000;
 const FEE = 0.05; // комиссия биржи с каждой сделки (5%)
 const TICK_MS = 5000; // как часто меняются цены
 const HISTORY_TICKS = 72; // сколько тиков истории отдаём клиенту (6 минут)
-const DOLE_LIMIT = 100; // пособие выдаётся тем, у кого меньше
-const DOLE_COOLDOWN = 10 * 60 * 1000;
 const LIQUIDITY = 20000; // сделка на столько КЕ двигает цену примерно на 100% (на деле — на долю этого)
 const DEMAND_HALF_MS = 4 * 60 * 1000; // за это время влияние спроса ослабевает вдвое
 const MAX_PRESSURE = 0.7; // цена от спроса меняется не больше чем в e^0.7 ≈ 2 раза
@@ -2105,19 +2103,6 @@ async function economyRoute(path, method, request, env, row) {
     await env.DB.prepare('INSERT INTO solo_claims (user_key, t) VALUES (?, ?) ON CONFLICT (user_key) DO UPDATE SET t = excluded.t').bind(row.key, now).run();
     await giveMoney(env, row.key, reward);
     return { reward, balance: await balanceOf(env, row.key) };
-  }
-
-  if (path === '/api/wallet/dole' && method === 'POST') {
-    const balance = await balanceOf(env, row.key);
-    if (balance >= DOLE_LIMIT) throw new ApiError(409, 'no-dole');
-    const result = await env.DB.prepare('UPDATE wallets SET balance = ?, dole_at = ? WHERE user_key = ? AND balance < ? AND dole_at <= ?')
-      .bind(DOLE_LIMIT, now, row.key, DOLE_LIMIT, now - DOLE_COOLDOWN)
-      .run();
-    if (!result.meta.changes) {
-      const wallet = await env.DB.prepare('SELECT dole_at FROM wallets WHERE user_key = ?').bind(row.key).first();
-      return { error: 'dole-wait', wait: Math.max(0, wallet.dole_at + DOLE_COOLDOWN - now) };
-    }
-    return { dole: DOLE_LIMIT - balance, ...(await economyState(env, row.key)) };
   }
 
   if (path === '/api/rich' && method === 'GET') {

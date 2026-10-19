@@ -76,18 +76,6 @@ export async function showTop(shell) {
   for (const line of box(width, 'САМЫЕ БОГАТЫЕ СОТРУДНИКИ', body)) shell.println(line);
 }
 
-export async function claimDole(shell) {
-  const result = await shell.backend.call('POST', '/api/wallet/dole');
-  if (result.error === 'dole-wait') {
-    const minutes = Math.ceil((result.wait ?? 0) / 60000);
-    shell.println(c.red(`Пособие уже выдавали. Следующее — через ${minutes} мин.`));
-  } else if (result.error) {
-    shell.println(c.red(errorText(result.error)));
-  } else {
-    shell.println(c.green(`Корпорация выплатила пособие: +${money(result.dole)}. Баланс: ${money(result.balance)}.`));
-  }
-}
-
 /* ---------- what a trade costs (the same arithmetic as the server) ---------- */
 
 // a big order moves the price and is filled at the average of the price before and after
