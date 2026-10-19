@@ -228,6 +228,14 @@ const LIAR_HAND = 5;
 const LIAR_LOG = 40;
 const TABLE_CARDS = ['Q', 'K', 'A'];
 
+// the deck is sized to the number of players still in the game, so every hand is dealt out of the whole deck:
+// 4 players — 20 cards, 3 — 15, 2 — 10 (five cards each)
+const LIAR_DECKS = {
+  4: { A: 6, K: 6, Q: 6, J: 2 },
+  3: { A: 4, K: 4, Q: 4, J: 3 },
+  2: { A: 3, K: 3, Q: 3, J: 1 }
+};
+
 function shuffle(list, rng) {
   const cards = [...list];
   for (let i = cards.length - 1; i > 0; i -= 1) {
@@ -272,7 +280,8 @@ function liarStart(players, stake, rng, now) {
 }
 
 function newRound(state, starter, rng, now) {
-  const deck = shuffle([...Array(6).fill('Q'), ...Array(6).fill('K'), ...Array(6).fill('A'), 'J', 'J'], rng);
+  const mix = LIAR_DECKS[Math.min(4, Math.max(2, aliveSeats(state).length))];
+  const deck = shuffle(Object.entries(mix).flatMap(([card, count]) => Array(count).fill(card === 'J' ? 'J' : card)), rng);
   for (const player of state.players) player.hand = [];
   for (let round = 0; round < LIAR_HAND; round += 1) {
     for (const player of state.players) if (player.alive) player.hand.push(deck.pop());
