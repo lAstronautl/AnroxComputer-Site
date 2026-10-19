@@ -1,6 +1,7 @@
 name = "anroxcomputers"
 main = "src/index.js"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-10-11"
+preview_urls = false # отдельные preview-адреса воркеру не нужны
 
 # Сюда подставьте id базы, который выдаст `wrangler d1 create anroxcomputers` (см. README.md)
 [[d1_databases]]
@@ -11,8 +12,6 @@ database_id = "56693669-57d6-41fd-bfa2-d19458c43d59"
 [vars]
 # Адреса сайта, которым разрешено обращаться к API (через запятую, без слэша в конце)
 ALLOWED_ORIGINS = "https://lastronautl.github.io"
-# true — разрешить ещё и localhost (для локальной проверки сайта); в боевой версии можно убрать
-ALLOW_LOCALHOST = "true"
 
 # Живые комнаты для «Танчиков», «Трона» и «Змейки»: WebSocket вместо опроса (меньше пинг).
 # Без этой привязки игры работают как раньше — через опрос.
@@ -23,3 +22,8 @@ class_name = "ArenaRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ArenaRoom"]
+
+# Логи вызовов съедают суточный лимит событий бесплатного тарифа
+[observability]
+enabled = false
+
