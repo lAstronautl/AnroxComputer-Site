@@ -1,4 +1,4 @@
-// Единый файл для вставки в редактор Worker в панели Cloudflare (собран из src/config.js + src/economy.js + src/index.js).
+// Единый файл для вставки в редактор Worker в панели Cloudflare (собран из src/config.js + src/economy.js + src/liar.js + src/index.js).
 // Не правьте вручную: меняйте src/ и пересобирайте (python3 worker/build-bundle.py).
 
 // с этого уровня доступны promote, demote, transfer, resetpass, fire, broadcast (adduser — всем вошедшим, но не выше своего уровня)
@@ -221,6 +221,180 @@ const CRASH_RESULT_MS = 7000;
 
 // с какого момента полёта раунд считается рухнувшим (с запасом на пинг)
 const crashDurationMs = (crash) => Math.ceil((Math.log(crash) / CRASH_RATE) * 1000) + CRASH_GRACE_MS + 50;
+
+const LIAR_TURN_MS = 40000; // время на ход; потом ход делается за игрока
+const LIAR_AFK_LIMIT = 3; // сколько ходов подряд можно пропустить, прежде чем вылетишь
+const LIAR_HAND = 5;
+const LIAR_LOG = 40;
+const TABLE_CARDS = ['Q', 'K', 'A'];
+
+function shuffle(list, rng) {
+  const cards = [...list];
+  for (let i = cards.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [cards[i], cards[j]] = [cards[j], cards[i]];
+  }
+  return cards;
+}
+
+const aliveSeats = (state) => state.players.map((player, seat) => (player.alive ? seat : -1)).filter((seat) => seat >= 0);
+
+function nextAlive(state, seat) {
+  const count = state.players.length;
+  for (let step = 1; step <= count; step += 1) {
+    const candidate = (seat + step) % count;
+    if (state.players[candidate].alive) return candidate;
+  }
+  return seat;
+}
+
+const note = (state, event, now) => {
+  state.log.push({ t: now, ...event });
+  if (state.log.length > LIAR_LOG) state.log.splice(0, state.log.length - LIAR_LOG);
+};
+
+/** A new game: seats in the order given, a secret bullet position in every revolver. */
+function liarStart(players, stake, rng, now) {
+  const state = {
+    round: 0,
+    stake,
+    pot: stake * players.length,
+    players: players.map((player) => ({ key: player.key, name: player.name, alive: true, hand: [], pulls: 0, bullet: Math.floor(rng() * 6), idle: 0 })),
+    table: 'A',
+    turn: 0,
+    last: null,
+    deadline: 0,
+    log: [],
+    winner: null
+  };
+  newRound(state, 0, rng, now);
+  return state;
+}
+
+function newRound(state, starter, rng, now) {
+  const deck = shuffle([...Array(6).fill('Q'), ...Array(6).fill('K'), ...Array(6).fill('A'), 'J', 'J'], rng);
+  for (const player of state.players) player.hand = [];
+  for (let round = 0; round < LIAR_HAND; round += 1) {
+    for (const player of state.players) if (player.alive) player.hand.push(deck.pop());
+  }
+  state.round += 1;
+  state.table = TABLE_CARDS[Math.floor(rng() * TABLE_CARDS.length)];
+  state.last = null;
+  state.turn = state.players[starter].alive ? starter : nextAlive(state, starter);
+  state.deadline = now + LIAR_TURN_MS;
+  note(state, { type: 'round', round: state.round, table: state.table, starter: state.turn }, now);
+}
+
+function finishIfAlone(state, now) {
+  const alive = aliveSeats(state);
+  if (alive.length === 1) {
+    state.winner = alive[0];
+    state.deadline = 0;
+    note(state, { type: 'win', seat: alive[0], pot: state.pot }, now);
+    return true;
+  }
+  return false;
+}
+
+function error(code) {
+  const failure = new Error(code);
+  failure.code = code;
+  return failure;
+}
+
+/** The player puts 1–3 cards face down and says they are the table card. */
+function liarPlay(state, seat, indexes, rng, now) {
+  if (state.winner !== null) throw error('over');
+  if (seat !== state.turn) throw error('not-your-turn');
+  const player = state.players[seat];
+  const picked = [...new Set(indexes)];
+  if (picked.length < 1 || picked.length > 3 || picked.length !== indexes.length || picked.some((i) => !Number.isInteger(i) || i < 0 || i >= player.hand.length)) {
+    throw error('bad-cards');
+  }
+  const cards = picked.map((i) => player.hand[i]);
+  player.hand = player.hand.filter((_, i) => !picked.includes(i));
+  player.idle = 0;
+  state.last = { seat, cards, count: cards.length };
+  note(state, { type: 'play', seat, count: cards.length }, now);
+  state.turn = nextAlive(state, seat);
+  state.deadline = now + LIAR_TURN_MS;
+  // a player with an empty hand has nothing to play: he has to call the previous player a liar
+  if (state.players[state.turn].hand.length === 0) liarCall(state, state.turn, rng, now, true);
+}
+
+/** "Лжец!": the last cards are shown; the loser of the dispute pulls the trigger of his own revolver. */
+function liarCall(state, seat, rng, now, forced = false) {
+  if (state.winner !== null) throw error('over');
+  if (seat !== state.turn) throw error('not-your-turn');
+  if (!state.last) throw error('nothing-to-call');
+  const caller = seat;
+  const accused = state.last.seat;
+  const cards = state.last.cards;
+  const truth = cards.every((card) => card === state.table || card === 'J');
+  const loser = truth ? caller : accused;
+  state.players[caller].idle = forced ? state.players[caller].idle : 0;
+  note(state, { type: 'liar', caller, accused, cards, truth, loser, forced, table: state.table }, now);
+
+  const victim = state.players[loser];
+  const fired = victim.pulls === victim.bullet;
+  victim.pulls += 1;
+  note(state, { type: 'shot', seat: loser, pull: victim.pulls, fired }, now);
+  if (fired) {
+    victim.alive = false;
+    victim.hand = [];
+    note(state, { type: 'out', seat: loser, reason: 'shot' }, now);
+    if (finishIfAlone(state, now)) return;
+  }
+  newRound(state, loser, rng, now);
+}
+
+/** Leaving a running game: the player is out and his stake stays in the pot. */
+function liarForfeit(state, seat, reason, rng, now) {
+  const player = state.players[seat];
+  if (!player || !player.alive || state.winner !== null) return;
+  player.alive = false;
+  player.hand = [];
+  note(state, { type: 'out', seat, reason }, now);
+  if (finishIfAlone(state, now)) return;
+  newRound(state, nextAlive(state, seat), rng, now);
+}
+
+/** Nobody acts for too long: the game plays the first card for the player, and kicks out those who keep sleeping. */
+function liarTimeout(state, rng, now) {
+  if (state.winner !== null || !state.deadline || now <= state.deadline) return false;
+  const seat = state.turn;
+  const player = state.players[seat];
+  const skipped = player.idle + 1;
+  if (skipped >= LIAR_AFK_LIMIT) {
+    liarForfeit(state, seat, 'afk', rng, now);
+    return true;
+  }
+  if (player.hand.length > 0) liarPlay(state, seat, [0], rng, now);
+  else liarCall(state, seat, rng, now, true);
+  player.idle = skipped; // a move made for the player must not look like his own
+  return true;
+}
+
+/** What one player may see: his own hand, the others' card counts, revolver wear, the public log. */
+function liarView(state, key, now) {
+  const me = state.players.findIndex((player) => player.key === key);
+  const lastBack = state.last ? { seat: state.last.seat, count: state.last.count } : null;
+  return {
+    round: state.round,
+    stake: state.stake,
+    pot: state.pot,
+    table: state.winner === null ? state.table : null,
+    turn: state.winner === null ? state.turn : null,
+    deadline: state.deadline,
+    now,
+    me,
+    hand: me >= 0 ? state.players[me].hand : [],
+    last: lastBack,
+    winner: state.winner,
+    players: state.players.map((player, seat) => ({ name: player.name, seat, alive: player.alive, cards: player.hand.length, pulls: player.pulls, me: seat === me })),
+    log: state.log
+  };
+}
 
 /**
  * API ролевой консоли АнКо (Cloudflare Worker + база D1).
@@ -506,6 +680,10 @@ async function ensureEconomy(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, name TEXT NOT NULL, asset TEXT NOT NULL, side TEXT NOT NULL, qty INTEGER NOT NULL, price REAL NOT NULL, pct REAL NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS market_edits (asset TEXT PRIMARY KEY, base REAL, vol REAL, hidden INTEGER NOT NULL DEFAULT 0)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS custom_assets (id TEXT PRIMARY KEY, name TEXT NOT NULL, grp TEXT NOT NULL, kind TEXT NOT NULL, base REAL NOT NULL, vol REAL NOT NULL)'),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS liar_lobbies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, stake INTEGER NOT NULL, max INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, rev INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT \'{}\')'
+    ),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS liar_players (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (lobby, user_key))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS crash_rounds (id INTEGER PRIMARY KEY AUTOINCREMENT, bet_until INTEGER NOT NULL, start INTEGER NOT NULL, crash REAL NOT NULL)'),
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS crash_bets (id INTEGER PRIMARY KEY AUTOINCREMENT, round INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, bet INTEGER NOT NULL, cashed REAL, payout INTEGER NOT NULL DEFAULT 0, UNIQUE (round, user_key))'
@@ -599,7 +777,8 @@ async function wipeEconomy(env, key) {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM wallets WHERE user_key = ?').bind(key),
       env.DB.prepare('DELETE FROM holdings WHERE user_key = ?').bind(key),
-      env.DB.prepare('DELETE FROM crash_bets WHERE user_key = ?').bind(key)
+      env.DB.prepare('DELETE FROM crash_bets WHERE user_key = ?').bind(key),
+      env.DB.prepare('DELETE FROM liar_players WHERE user_key = ?').bind(key)
     ]);
   } catch {
     // the economy was never used
@@ -653,6 +832,212 @@ async function economyState(env, key) {
   await balanceOf(env, key);
   const refunded = await refundRetired(env, key);
   return { balance: await balanceOf(env, key), holdings: await holdingsOf(env, key), ...(refunded ? { refunded } : {}) };
+}
+
+/* ---------- «Колода лжеца»: lobbies, stakes and the game itself ---------- */
+
+const LIAR_OPEN_MS = 20 * 60 * 1000; // an open lobby nobody starts is closed and the stakes are returned
+const LIAR_RESULT_MS = 120 * 1000; // how long the players still see the finished game
+
+async function liarPlayersOf(env, id) {
+  const { results } = await env.DB.prepare('SELECT user_key, name FROM liar_players WHERE lobby = ? ORDER BY rowid').bind(id).all();
+  return results;
+}
+
+// the lobby a player is sitting in: waiting, playing, or just finished
+async function liarMine(env, key, now) {
+  await ensureEconomy(env);
+  return env.DB.prepare(
+    'SELECT l.* FROM liar_lobbies l JOIN liar_players p ON p.lobby = l.id WHERE p.user_key = ? AND (l.status IN (\'open\', \'playing\') OR (l.status = \'done\' AND l.ended > ?)) ORDER BY l.id DESC LIMIT 1'
+  )
+    .bind(key, now - LIAR_RESULT_MS)
+    .first();
+}
+
+// a lobby that did not start: everybody gets the stake back
+async function liarCancel(env, lobby, now) {
+  const closed = await env.DB.prepare('UPDATE liar_lobbies SET status = \'closed\', ended = ? WHERE id = ? AND status = \'open\'').bind(now, lobby.id).run();
+  if (!closed.meta.changes) return;
+  for (const player of await liarPlayersOf(env, lobby.id)) await giveMoney(env, player.user_key, lobby.stake);
+  await env.DB.prepare('DELETE FROM liar_players WHERE lobby = ?').bind(lobby.id).run();
+}
+
+const liarFail = (error) => (error instanceof ApiError || !error.code ? error : new ApiError(409, error.code));
+
+/** Changes the game state of a running lobby; two players acting at once cannot overwrite each other (retry on a clash). */
+async function liarMutate(env, id, now, change) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const row = await env.DB.prepare('SELECT * FROM liar_lobbies WHERE id = ?').bind(id).first();
+    if (!row || row.status !== 'playing') return null;
+    const state = JSON.parse(row.state);
+    let changed;
+    try {
+      changed = change(state, row);
+    } catch (error) {
+      throw liarFail(error);
+    }
+    if (changed === false) return { row, state };
+    const done = state.winner !== null;
+    const saved = await env.DB.prepare('UPDATE liar_lobbies SET state = ?, rev = rev + 1, status = ?, ended = ? WHERE id = ? AND rev = ?')
+      .bind(JSON.stringify(state), done ? 'done' : 'playing', done ? now : 0, id, row.rev)
+      .run();
+    if (saved.meta.changes) {
+      // the winner takes the whole pot: his own stake and the stakes of everybody who was shot or left
+      if (done) await giveMoney(env, state.players[state.winner].key, state.pot);
+      return { row: { ...row, status: done ? 'done' : 'playing' }, state };
+    }
+  }
+  throw new ApiError(409, 'busy');
+}
+
+// a player who does not move for too long is moved for (see liarTimeout)
+async function liarSettle(env, row, now) {
+  if (row.status !== 'playing') return;
+  const state = JSON.parse(row.state);
+  if (!state.deadline || now <= state.deadline) return;
+  await liarMutate(env, row.id, now, (current) => {
+    let any = false;
+    for (let guard = 0; guard < 8 && liarTimeout(current, randomFloat, now); guard += 1) any = true;
+    return any;
+  });
+}
+
+async function liarSnapshot(env, row, key, now) {
+  const balance = await balanceOf(env, key);
+  if (!row) return { lobby: null, balance };
+  const fresh = await env.DB.prepare('SELECT * FROM liar_lobbies WHERE id = ?').bind(row.id).first();
+  if (fresh.status === 'open') {
+    const players = await liarPlayersOf(env, fresh.id);
+    return {
+      balance,
+      lobby: {
+        id: fresh.id,
+        status: 'open',
+        stake: fresh.stake,
+        max: fresh.max,
+        owner: fresh.owner_name,
+        mine: fresh.owner_key === key,
+        players: players.map((player) => ({ name: player.name, me: player.user_key === key })),
+        now
+      }
+    };
+  }
+  return { balance, lobby: { id: fresh.id, status: fresh.status, max: fresh.max, owner: fresh.owner_name, ...liarView(JSON.parse(fresh.state), key, now) } };
+}
+
+async function liarRoute(game, env, row, body, now) {
+  const key = row.key;
+
+  if (game === 'liar/list') {
+    const { results: stale } = await env.DB.prepare('SELECT * FROM liar_lobbies WHERE status = \'open\' AND created < ?').bind(now - LIAR_OPEN_MS).all();
+    for (const lobby of stale) await liarCancel(env, lobby, now);
+    const { results: open } = await env.DB.prepare('SELECT id, owner_name, stake, max FROM liar_lobbies WHERE status = \'open\' ORDER BY id DESC LIMIT 20').all();
+    const lobbies = [];
+    for (const lobby of open) lobbies.push({ id: lobby.id, owner: lobby.owner_name, stake: lobby.stake, max: lobby.max, players: (await liarPlayersOf(env, lobby.id)).map((player) => player.name) });
+    const mine = await liarMine(env, key, now);
+    return { lobbies, mine: mine ? mine.id : null, balance: await balanceOf(env, key) };
+  }
+
+  if (game === 'liar/state') {
+    let mine = await liarMine(env, key, now);
+    if (mine) {
+      await liarSettle(env, mine, now);
+      mine = await liarMine(env, key, now);
+    }
+    return liarSnapshot(env, mine, key, now);
+  }
+
+  if (game === 'liar/create') {
+    const stake = Math.floor(Number(body.stake));
+    const max = Math.floor(Number(body.max ?? 4));
+    if (!Number.isFinite(stake) || stake < 10 || stake > MAX_BET || !(max >= 2 && max <= 4)) throw new ApiError(400, 'bad-bet');
+    await balanceOf(env, key);
+    const active = await liarMine(env, key, now);
+    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
+    await takeMoney(env, key, stake);
+    const created = await env.DB.prepare('INSERT INTO liar_lobbies (owner_key, owner_name, stake, max, status, created) VALUES (?, ?, ?, ?, \'open\', ?)').bind(key, row.name, stake, max, now).run();
+    if (!created.meta.changes) {
+      await giveMoney(env, key, stake);
+      throw new ApiError(500, 'server');
+    }
+    const lobby = await env.DB.prepare('SELECT id FROM liar_lobbies WHERE owner_key = ? ORDER BY id DESC LIMIT 1').bind(key).first();
+    await env.DB.prepare('INSERT INTO liar_players (lobby, user_key, name) VALUES (?, ?, ?)').bind(lobby.id, key, row.name).run();
+    return liarSnapshot(env, await liarMine(env, key, now), key, now);
+  }
+
+  if (game === 'liar/join') {
+    const id = Math.floor(Number(body.id));
+    const lobby = await env.DB.prepare('SELECT * FROM liar_lobbies WHERE id = ? AND status = \'open\'').bind(id).first();
+    if (!lobby) throw new ApiError(404, 'no-lobby');
+    await balanceOf(env, key);
+    const active = await liarMine(env, key, now);
+    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
+    await takeMoney(env, key, lobby.stake);
+    // the seat is taken only while the lobby is still open and has room
+    const seated = await env.DB.prepare(
+      'INSERT INTO liar_players (lobby, user_key, name) SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM liar_players WHERE lobby = ?) < (SELECT max FROM liar_lobbies WHERE id = ? AND status = \'open\')'
+    )
+      .bind(id, key, row.name, id, id)
+      .run();
+    if (!seated.meta.changes) {
+      await giveMoney(env, key, lobby.stake);
+      throw new ApiError(409, 'full');
+    }
+    return liarSnapshot(env, await liarMine(env, key, now), key, now);
+  }
+
+  if (game === 'liar/leave') {
+    const mine = await liarMine(env, key, now);
+    if (!mine) return { lobby: null, balance: await balanceOf(env, key) };
+    if (mine.status === 'open') {
+      if (mine.owner_key === key) {
+        await liarCancel(env, mine, now);
+      } else {
+        const left = await env.DB.prepare('DELETE FROM liar_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+        if (left.meta.changes) await giveMoney(env, key, mine.stake);
+      }
+    } else if (mine.status === 'playing') {
+      // leaving a running game: the player is out and his stake stays in the pot
+      await liarMutate(env, mine.id, now, (state) => {
+        const seat = state.players.findIndex((player) => player.key === key);
+        liarForfeit(state, seat, 'left', randomFloat, now);
+      });
+      await env.DB.prepare('DELETE FROM liar_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+    } else {
+      await env.DB.prepare('DELETE FROM liar_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+    }
+    return { lobby: null, balance: await balanceOf(env, key) };
+  }
+
+  const mine = await liarMine(env, key, now);
+  if (!mine) throw new ApiError(409, 'no-lobby');
+
+  if (game === 'liar/start') {
+    if (mine.status !== 'open') throw new ApiError(409, 'started');
+    if (mine.owner_key !== key) throw new ApiError(403, 'forbidden');
+    const players = await liarPlayersOf(env, mine.id);
+    if (players.length < 2) throw new ApiError(409, 'few-players');
+    const state = liarStart(players.map((player) => ({ key: player.user_key, name: player.name })), mine.stake, randomFloat, now);
+    const started = await env.DB.prepare('UPDATE liar_lobbies SET status = \'playing\', state = ?, rev = rev + 1 WHERE id = ? AND status = \'open\'').bind(JSON.stringify(state), mine.id).run();
+    if (!started.meta.changes) throw new ApiError(409, 'started');
+    return liarSnapshot(env, mine, key, now);
+  }
+
+  if (game === 'liar/play' || game === 'liar/call') {
+    if (mine.status !== 'playing') throw new ApiError(409, 'over');
+    await liarSettle(env, mine, now);
+    const cards = Array.isArray(body.cards) ? body.cards.map(Number) : [];
+    const result = await liarMutate(env, mine.id, now, (state) => {
+      const seat = state.players.findIndex((player) => player.key === key);
+      if (seat < 0 || !state.players[seat].alive) throw new ApiError(409, 'not-your-turn');
+      if (game === 'liar/play') liarPlay(state, seat, cards, randomFloat, now);
+      else liarCall(state, seat, randomFloat, now);
+    });
+    if (!result) throw new ApiError(409, 'over');
+    return liarSnapshot(env, await liarMine(env, key, now), key, now);
+  }
+
+  throw new ApiError(404, 'not-found');
 }
 
 /** Market editor (level MARKET_ADMIN_LEVEL and up): news shocks, price levels, volatility, new and removed companies. */
@@ -857,6 +1242,8 @@ async function economyRoute(path, method, request, env, row) {
     await giveMoney(env, row.key, payout);
     return { ...roll, mode: body.mode, target, bet, payout, balance: await balanceOf(env, row.key) };
   }
+
+  if (game.startsWith('liar/')) return liarRoute(game, env, row, body, now);
 
   if (game === 'crash/state') return crashState(env, row, now);
 
