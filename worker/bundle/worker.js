@@ -1373,7 +1373,8 @@ async function route(request, env) {
     const added = await env.DB.prepare('SELECT COUNT(*) AS n FROM attempts WHERE user_key = ? AND action = ? AND t > ?')
       .bind(row.key, 'adduser', Date.now() - 24 * 3600000)
       .first();
-    if (added.n >= ADDUSER_PER_DAY) throw new ApiError(429, 'rate');
+    // the top level (market editor) adds people without a daily limit
+    if (row.level < MARKET_ADMIN_LEVEL && added.n >= ADDUSER_PER_DAY) throw new ApiError(429, 'rate');
 
     const key = userKey(name);
     if (await env.DB.prepare('SELECT key FROM users WHERE key = ?').bind(key).first()) throw new ApiError(409, 'taken');
