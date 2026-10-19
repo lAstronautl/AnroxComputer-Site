@@ -12,7 +12,7 @@ import { createBackend } from './backend';
 import { playHack, playSnake } from './games';
 import { playCasino } from './casino';
 import { playMap } from './mapview';
-import { claimDole, cmdMarketEdit, playMarket, showTop, showWallet } from './market';
+import { claimDole, cmdMarketEdit, playMarket, sendMoney, showTop, showWallet } from './market';
 import { ConsoleSound } from './sound';
 import { createKnob } from './knob';
 import { LOGO, LOGO_SMALL, LOGO_WIDTH } from './logo';
@@ -771,6 +771,11 @@ class Shell {
         auth: true,
         run: () => showTop(this)
       },
+      pay: {
+        desc: 'перевести КЕ сотруднику письмом (pay <имя> <сумма> [текст])',
+        auth: true,
+        run: (args) => sendMoney(this, args)
+      },
       dole: {
         desc: 'пособие тем, у кого меньше 100 КЕ',
         auth: true,
@@ -816,6 +821,7 @@ class Shell {
     commands.казино = commands.casino;
     commands.рейтинг = commands.top;
     commands.пособие = commands.dole;
+    commands.платить = commands.pay;
     commands.рынок = commands.marketedit;
     commands.mkt = commands.marketedit;
     commands.exit = commands.logout;

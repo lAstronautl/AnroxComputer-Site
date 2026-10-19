@@ -1,4 +1,4 @@
-// Единый файл для вставки в редактор Worker в панели Cloudflare (собран из src/config.js + src/economy.js + src/liar.js + src/index.js).
+// Единый файл для вставки в редактор Worker в панели Cloudflare (собран из src/config.js + src/economy.js + src/liar.js + src/tanks.js + src/index.js).
 // Не правьте вручную: меняйте src/ и пересобирайте (python3 worker/build-bundle.py).
 
 // с этого уровня доступны promote, demote, transfer, resetpass, fire, broadcast (adduser — всем вошедшим, но не выше своего уровня)
@@ -405,6 +405,342 @@ function liarView(state, key, now) {
   };
 }
 
+const TANK_TICK_MS = 300;
+const TANK_COUNTDOWN = 10; // тактов до начала боя
+const TANK_MAX_TICKS = 600; // бой не длиннее трёх минут
+const TANK_LIVES = 3;
+const TANK_SHIELD = 5; // тактов неуязвимости после возрождения
+const BULLET_STEPS = 2; // клеток за такт у снаряда
+const TANK_LOG = 30;
+
+const TANK_W = 19;
+const TANK_H = 13;
+
+// . пусто · B кирпич (пробивается) · S сталь · W вода (танк не проедет, снаряд пролетит) · G кусты (скрывают танк)
+const TANK_MAPS = {
+  yard: {
+    name: 'Кирпичный двор',
+    rows: [
+      '...................',
+      '.BB.BB..S.S..BB.BB.',
+      '.BB.BB.......BB.BB.',
+      '...................',
+      '.SS..BBB...BBB..SS.',
+      '.....B.......B.....',
+      '..B..B.GGGGG.B..B..',
+      '.....B.......B.....',
+      '.SS..BBB...BBB..SS.',
+      '...................',
+      '.BB.BB.......BB.BB.',
+      '.BB.BB..S.S..BB.BB.',
+      '...................'
+    ]
+  },
+  maze: {
+    name: 'Стальной лабиринт',
+    rows: [
+      '...................',
+      '.S.BBB.S...S.BBB.S.',
+      '.S.....S.B.S.....S.',
+      '.S.SSS.......SSS.S.',
+      '...S...BB.BB...S...',
+      'BB.S.BB.....BB.S.BB',
+      '...W...........W...',
+      'BB.S.BB.....BB.S.BB',
+      '...S...BB.BB...S...',
+      '.S.SSS.......SSS.S.',
+      '.S.....S.B.S.....S.',
+      '.S.BBB.S...S.BBB.S.',
+      '...................'
+    ]
+  },
+  river: {
+    name: 'Река',
+    rows: [
+      '...................',
+      '.BB..GG.....GG..BB.',
+      '.BB..GG.B.B.GG..BB.',
+      '...................',
+      '.S...............S.',
+      'WWW..WWWWWWWWW..WWW',
+      'WWW..W.......W..WWW',
+      'WWW..WWWWWWWWW..WWW',
+      '.S...............S.',
+      '...................',
+      '.BB..GG.B.B.GG..BB.',
+      '.BB..GG.....GG..BB.',
+      '...................'
+    ]
+  }
+};
+
+// где появляется каждый танк: по углам арены
+const TANK_SPAWNS = [
+  [0, 0],
+  [TANK_W - 1, TANK_H - 1],
+  [TANK_W - 1, 0],
+  [0, TANK_H - 1]
+];
+
+const TANK_DIRS = { U: [0, -1], D: [0, 1], L: [-1, 0], R: [1, 0] };
+const isDir = (value) => Object.hasOwn(TANK_DIRS, value);
+
+const tankNote = (state, event) => {
+  state.log.push({ tick: state.tick, ...event });
+  if (state.log.length > TANK_LOG) state.log.splice(0, state.log.length - TANK_LOG);
+};
+
+const tankCell = (state, x, y) => (x < 0 || y < 0 || x >= TANK_W || y >= TANK_H ? '#' : state.grid[y][x]);
+const tankAt = (state, x, y) => state.players.findIndex((player) => player.alive && player.x === x && player.y === y);
+
+function tankSetCell(state, x, y, value) {
+  const row = state.grid[y];
+  state.grid[y] = row.slice(0, x) + value + row.slice(x + 1);
+}
+
+/** The nearest free cell to a spawn point (the spawn itself unless a tank sits on it). */
+function tankFreeNear(state, [sx, sy]) {
+  const seen = new Set([`${sx},${sy}`]);
+  const queue = [[sx, sy]];
+  while (queue.length) {
+    const [x, y] = queue.shift();
+    if (['.', 'G'].includes(tankCell(state, x, y)) && tankAt(state, x, y) < 0) return [x, y];
+    for (const [dx, dy] of Object.values(TANK_DIRS)) {
+      const next = [x + dx, y + dy];
+      const mark = `${next[0]},${next[1]}`;
+      if (tankCell(state, next[0], next[1]) !== '#' && !seen.has(mark)) {
+        seen.add(mark);
+        queue.push(next);
+      }
+    }
+  }
+  return [sx, sy];
+}
+
+function tankStart(players, mapId, stake, now) {
+  const map = TANK_MAPS[mapId] ?? TANK_MAPS.yard;
+  const state = {
+    map: TANK_MAPS[mapId] ? mapId : 'yard',
+    mapName: map.name,
+    grid: [...map.rows],
+    tick: 0,
+    nextTick: now + TANK_TICK_MS,
+    stake,
+    pot: stake * players.length,
+    players: players.map((player, seat) => ({
+      key: player.key,
+      name: player.name,
+      x: TANK_SPAWNS[seat][0],
+      y: TANK_SPAWNS[seat][1],
+      dir: seat === 1 || seat === 2 ? 'L' : 'R',
+      alive: true,
+      lives: TANK_LIVES,
+      kills: 0,
+      shield: 0,
+      cool: 0,
+      cmd: { move: null, fire: null },
+      seen: 0 // the stamp of the last input that was carried out
+    })),
+    bullets: [],
+    log: [],
+    over: false,
+    winners: []
+  };
+  tankNote(state, { type: 'start' });
+  return state;
+}
+
+/** The player's wish for the next tick: where to drive and/or where to shoot. A newer wish replaces the older one. */
+function tankInput(state, seat, move, fire) {
+  const player = state.players[seat];
+  if (!player || !player.alive || state.over) return;
+  if (isDir(move)) player.cmd.move = move;
+  if (isDir(fire)) player.cmd.fire = fire;
+}
+
+function tankFinish(state, winners) {
+  state.over = true;
+  state.winners = winners;
+  state.bullets = [];
+  tankNote(state, { type: 'over', winners });
+}
+
+function tankCheckEnd(state) {
+  if (state.over) return;
+  const alive = state.players.map((player, seat) => (player.alive ? seat : -1)).filter((seat) => seat >= 0);
+  if (alive.length <= 1) tankFinish(state, alive);
+}
+
+function tankHit(state, victimSeat, ownerSeat) {
+  const victim = state.players[victimSeat];
+  victim.lives -= 1;
+  const owner = state.players[ownerSeat];
+  if (owner && ownerSeat !== victimSeat) owner.kills += 1;
+  if (victim.lives <= 0) {
+    victim.alive = false;
+    tankNote(state, { type: 'dead', victim: victimSeat, owner: ownerSeat });
+    tankCheckEnd(state);
+    return;
+  }
+  tankNote(state, { type: 'hit', victim: victimSeat, owner: ownerSeat, lives: victim.lives });
+  const [x, y] = tankFreeNear(state, TANK_SPAWNS[victimSeat]);
+  victim.x = x;
+  victim.y = y;
+  victim.shield = TANK_SHIELD;
+}
+
+function tankMoveBullets(state) {
+  for (let step = 0; step < BULLET_STEPS; step += 1) {
+    for (const bullet of [...state.bullets]) {
+      if (!state.bullets.includes(bullet)) continue; // already removed in this step
+      const [dx, dy] = TANK_DIRS[bullet.dir];
+      const x = bullet.x + dx;
+      const y = bullet.y + dy;
+      const remove = () => {
+        state.bullets = state.bullets.filter((item) => item !== bullet);
+      };
+      const cell = tankCell(state, x, y);
+      if (cell === '#' || cell === 'S') {
+        remove();
+        continue;
+      }
+      if (cell === 'B') {
+        tankSetCell(state, x, y, '.');
+        remove();
+        continue;
+      }
+      const other = state.bullets.find((item) => item !== bullet && item.x === x && item.y === y);
+      if (other) {
+        state.bullets = state.bullets.filter((item) => item !== bullet && item !== other);
+        continue;
+      }
+      const victim = tankAt(state, x, y);
+      if (victim >= 0) {
+        remove();
+        if (state.players[victim].shield <= 0) tankHit(state, victim, bullet.owner);
+        if (state.over) return;
+        continue;
+      }
+      bullet.x = x;
+      bullet.y = y;
+    }
+  }
+}
+
+/** One tick of the battle. */
+function tankStep(state) {
+  if (state.over) return;
+  state.tick += 1;
+
+  if (state.tick <= TANK_COUNTDOWN) {
+    for (const player of state.players) player.cmd = { move: null, fire: null };
+    if (state.tick === TANK_COUNTDOWN) tankNote(state, { type: 'go' });
+    return;
+  }
+
+  const count = state.players.length;
+  for (let i = 0; i < count; i += 1) {
+    // the order of moves is rotated, so nobody always wins the fight for a cell
+    const seat = (i + state.tick) % count;
+    const player = state.players[seat];
+    if (!player.alive) continue;
+    const { move, fire } = player.cmd;
+    player.cmd = { move: null, fire: null };
+    if (move) {
+      player.dir = move;
+      const [dx, dy] = TANK_DIRS[move];
+      const x = player.x + dx;
+      const y = player.y + dy;
+      if (['.', 'G'].includes(tankCell(state, x, y)) && tankAt(state, x, y) < 0) {
+        player.x = x;
+        player.y = y;
+      }
+    }
+    // one shell in the air per tank, like in the original
+    if (fire && player.cool <= 0 && !state.bullets.some((bullet) => bullet.owner === seat)) {
+      state.bullets.push({ x: player.x, y: player.y, dir: fire, owner: seat });
+      player.cool = 1;
+    }
+  }
+  for (const player of state.players) {
+    if (player.cool > 0) player.cool -= 1;
+    if (player.shield > 0) player.shield -= 1;
+  }
+
+  tankMoveBullets(state);
+  if (state.over) return;
+
+  if (state.tick >= TANK_MAX_TICKS) {
+    // time is up: the most lives win, then the most kills; equal tanks share the pot
+    const alive = state.players.map((player, seat) => ({ seat, player })).filter((item) => item.player.alive);
+    const best = Math.max(...alive.map((item) => item.player.lives * 100 + item.player.kills));
+    tankFinish(state, alive.filter((item) => item.player.lives * 100 + item.player.kills === best).map((item) => item.seat));
+  }
+}
+
+/** Runs the ticks that are due; `inputs` are the newest wishes as { seat, t, move, fire }. Returns true if anything changed. */
+function tankAdvance(state, now, inputs = []) {
+  if (state.over || now < state.nextTick) return false;
+  let first = true;
+  let guard = 0;
+  while (!state.over && now >= state.nextTick && guard < 6) {
+    if (first) {
+      for (const input of inputs) {
+        const player = state.players[input.seat];
+        if (player && input.t > player.seen) {
+          tankInput(state, input.seat, input.move, input.fire);
+          player.seen = input.t;
+        }
+      }
+      first = false;
+    }
+    tankStep(state);
+    state.nextTick += TANK_TICK_MS;
+    guard += 1;
+  }
+  if (!state.over && now >= state.nextTick) state.nextTick = now + TANK_TICK_MS; // far behind: do not try to catch up
+  return true;
+}
+
+function tankForfeit(state, seat) {
+  const player = state.players[seat];
+  if (!player || !player.alive || state.over) return;
+  player.alive = false;
+  player.lives = 0;
+  tankNote(state, { type: 'left', victim: seat });
+  tankCheckEnd(state);
+}
+
+/** What one player sees: everything, except enemy tanks hiding in the bushes (unless right next to him). */
+function tankView(state, key, now) {
+  const me = state.players.findIndex((player) => player.key === key);
+  const watcher = me >= 0 && state.players[me].alive ? state.players[me] : null;
+  return {
+    map: state.map,
+    mapName: state.mapName,
+    grid: state.grid,
+    tick: state.tick,
+    countdown: Math.max(0, TANK_COUNTDOWN - state.tick),
+    timeLeft: Math.max(0, TANK_MAX_TICKS - state.tick),
+    tickMs: TANK_TICK_MS,
+    now,
+    nextTick: state.nextTick,
+    me,
+    stake: state.stake,
+    pot: state.pot,
+    over: state.over,
+    winners: state.winners,
+    bullets: state.bullets.map((bullet) => ({ x: bullet.x, y: bullet.y, dir: bullet.dir, owner: bullet.owner })),
+    players: state.players.map((player, seat) => {
+      const base = { seat, name: player.name, alive: player.alive, lives: player.lives, kills: player.kills, me: seat === me };
+      if (!player.alive) return base;
+      const hidden = watcher && seat !== me && tankCell(state, player.x, player.y) === 'G' && (Math.abs(player.x - watcher.x) > 1 || Math.abs(player.y - watcher.y) > 1);
+      return hidden ? { ...base, hidden: true } : { ...base, x: player.x, y: player.y, dir: player.dir, shield: player.shield };
+    }),
+    log: state.log
+  };
+}
+
 /**
  * API ролевой консоли АнКо (Cloudflare Worker + база D1).
  * Хранит сотрудников, сессии и журнал обращений. Пароли хешируются здесь (PBKDF2),
@@ -692,6 +1028,11 @@ async function ensureEconomy(env) {
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS liar_lobbies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, stake INTEGER NOT NULL, max INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, rev INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT \'{}\')'
     ),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS tank_lobbies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, stake INTEGER NOT NULL, max INTEGER NOT NULL, map TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, rev INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT \'{}\')'
+    ),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS tank_players (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (lobby, user_key))'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS tank_inputs (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, t INTEGER NOT NULL, move TEXT, fire TEXT, PRIMARY KEY (lobby, user_key))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS liar_players (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (lobby, user_key))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS crash_rounds (id INTEGER PRIMARY KEY AUTOINCREMENT, bet_until INTEGER NOT NULL, start INTEGER NOT NULL, crash REAL NOT NULL)'),
     env.DB.prepare(
@@ -787,7 +1128,8 @@ async function wipeEconomy(env, key) {
       env.DB.prepare('DELETE FROM wallets WHERE user_key = ?').bind(key),
       env.DB.prepare('DELETE FROM holdings WHERE user_key = ?').bind(key),
       env.DB.prepare('DELETE FROM crash_bets WHERE user_key = ?').bind(key),
-      env.DB.prepare('DELETE FROM liar_players WHERE user_key = ?').bind(key)
+      env.DB.prepare('DELETE FROM liar_players WHERE user_key = ?').bind(key),
+      env.DB.prepare('DELETE FROM tank_players WHERE user_key = ?').bind(key)
     ]);
   } catch {
     // the economy was never used
@@ -1049,6 +1391,221 @@ async function liarRoute(game, env, row, body, now) {
   throw new ApiError(404, 'not-found');
 }
 
+/* ---------- «Танчики»: lobbies, stakes and the battle ---------- */
+
+const TANK_OPEN_MS = 20 * 60 * 1000;
+const TANK_RESULT_MS = 120 * 1000;
+
+async function tankPlayersOf(env, id) {
+  const { results } = await env.DB.prepare('SELECT user_key, name FROM tank_players WHERE lobby = ? ORDER BY rowid').bind(id).all();
+  return results;
+}
+
+async function tankMine(env, key, now) {
+  await ensureEconomy(env);
+  return env.DB.prepare(
+    'SELECT l.* FROM tank_lobbies l JOIN tank_players p ON p.lobby = l.id WHERE p.user_key = ? AND (l.status IN (\'open\', \'playing\') OR (l.status = \'done\' AND l.ended > ?)) ORDER BY l.id DESC LIMIT 1'
+  )
+    .bind(key, now - TANK_RESULT_MS)
+    .first();
+}
+
+async function tankCancel(env, lobby, now) {
+  const closed = await env.DB.prepare('UPDATE tank_lobbies SET status = \'closed\', ended = ? WHERE id = ? AND status = \'open\'').bind(now, lobby.id).run();
+  if (!closed.meta.changes) return;
+  for (const player of await tankPlayersOf(env, lobby.id)) await giveMoney(env, player.user_key, lobby.stake);
+  await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ?').bind(lobby.id).run();
+}
+
+// the pot goes to the winner, or is shared by tanks that finished equal; a remainder smaller than a share is burnt
+async function tankPayout(env, state) {
+  if (!state.winners.length) return;
+  const share = Math.floor(state.pot / state.winners.length);
+  for (const seat of state.winners) await giveMoney(env, state.players[seat].key, share);
+}
+
+async function tankMutate(env, id, now, change) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const row = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ?').bind(id).first();
+    if (!row || row.status !== 'playing') return null;
+    const state = JSON.parse(row.state);
+    let changed;
+    try {
+      changed = change(state, row);
+    } catch (error) {
+      throw liarFail(error);
+    }
+    if (changed === false) return { row, state };
+    const done = state.over;
+    const saved = await env.DB.prepare('UPDATE tank_lobbies SET state = ?, rev = rev + 1, status = ?, ended = ? WHERE id = ? AND rev = ?')
+      .bind(JSON.stringify(state), done ? 'done' : 'playing', done ? now : 0, id, row.rev)
+      .run();
+    if (saved.meta.changes) {
+      if (done) await tankPayout(env, state);
+      return { row: { ...row, status: done ? 'done' : 'playing' }, state };
+    }
+  }
+  return null; // somebody else advanced the battle at the same moment: that is fine
+}
+
+// runs the ticks that are due, with the newest wishes of the players
+async function tankSettle(env, row, now) {
+  if (row.status !== 'playing') return;
+  const state = JSON.parse(row.state);
+  if (now < state.nextTick) return;
+  const { results } = await env.DB.prepare('SELECT user_key, t, move, fire FROM tank_inputs WHERE lobby = ?').bind(row.id).all();
+  await tankMutate(env, row.id, now, (current) => {
+    const inputs = results
+      .map((item) => ({ seat: current.players.findIndex((player) => player.key === item.user_key), t: item.t, move: item.move, fire: item.fire }))
+      .filter((item) => item.seat >= 0);
+    return tankAdvance(current, now, inputs);
+  });
+}
+
+async function tankSnapshot(env, row, key, now) {
+  const balance = await balanceOf(env, key);
+  if (!row) return { lobby: null, balance };
+  const fresh = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ?').bind(row.id).first();
+  if (fresh.status === 'open') {
+    const players = await tankPlayersOf(env, fresh.id);
+    return {
+      balance,
+      lobby: {
+        id: fresh.id,
+        status: 'open',
+        stake: fresh.stake,
+        max: fresh.max,
+        map: fresh.map,
+        mapName: TANK_MAPS[fresh.map]?.name ?? fresh.map,
+        owner: fresh.owner_name,
+        mine: fresh.owner_key === key,
+        players: players.map((player) => ({ name: player.name, me: player.user_key === key })),
+        now
+      }
+    };
+  }
+  return { balance, lobby: { id: fresh.id, status: fresh.status, max: fresh.max, owner: fresh.owner_name, ...tankView(JSON.parse(fresh.state), key, now) } };
+}
+
+async function tankRoute(game, env, row, body, now) {
+  const key = row.key;
+
+  if (game === 'tank/list') {
+    const { results: stale } = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE status = \'open\' AND created < ?').bind(now - TANK_OPEN_MS).all();
+    for (const lobby of stale) await tankCancel(env, lobby, now);
+    const { results: open } = await env.DB.prepare('SELECT id, owner_name, stake, max, map FROM tank_lobbies WHERE status = \'open\' ORDER BY id DESC LIMIT 20').all();
+    const lobbies = [];
+    for (const lobby of open) {
+      lobbies.push({ id: lobby.id, owner: lobby.owner_name, stake: lobby.stake, max: lobby.max, mapName: TANK_MAPS[lobby.map]?.name ?? lobby.map, players: (await tankPlayersOf(env, lobby.id)).map((player) => player.name) });
+    }
+    const mine = await tankMine(env, key, now);
+    return { lobbies, maps: Object.entries(TANK_MAPS).map(([id, map]) => ({ id, name: map.name })), mine: mine ? mine.id : null, balance: await balanceOf(env, key) };
+  }
+
+  if (game === 'tank/state') {
+    let mine = await tankMine(env, key, now);
+    if (mine) {
+      await tankSettle(env, mine, now);
+      mine = await tankMine(env, key, now);
+    }
+    return tankSnapshot(env, mine, key, now);
+  }
+
+  if (game === 'tank/create') {
+    const stake = Math.floor(Number(body.stake));
+    const max = Math.floor(Number(body.max ?? 4));
+    const map = String(body.map ?? 'yard');
+    if (!Number.isFinite(stake) || stake < 10 || stake > MAX_BET || !(max >= 2 && max <= 4) || !TANK_MAPS[map]) throw new ApiError(400, 'bad-bet');
+    await balanceOf(env, key);
+    const active = await tankMine(env, key, now);
+    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
+    await takeMoney(env, key, stake);
+    const created = await env.DB.prepare('INSERT INTO tank_lobbies (owner_key, owner_name, stake, max, map, status, created) VALUES (?, ?, ?, ?, ?, \'open\', ?)').bind(key, row.name, stake, max, map, now).run();
+    if (!created.meta.changes) {
+      await giveMoney(env, key, stake);
+      throw new ApiError(500, 'server');
+    }
+    const lobby = await env.DB.prepare('SELECT id FROM tank_lobbies WHERE owner_key = ? ORDER BY id DESC LIMIT 1').bind(key).first();
+    await env.DB.prepare('INSERT INTO tank_players (lobby, user_key, name) VALUES (?, ?, ?)').bind(lobby.id, key, row.name).run();
+    return tankSnapshot(env, await tankMine(env, key, now), key, now);
+  }
+
+  if (game === 'tank/join') {
+    const id = Math.floor(Number(body.id));
+    const lobby = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ? AND status = \'open\'').bind(id).first();
+    if (!lobby) throw new ApiError(404, 'no-lobby');
+    await balanceOf(env, key);
+    const active = await tankMine(env, key, now);
+    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
+    await takeMoney(env, key, lobby.stake);
+    const seated = await env.DB.prepare(
+      'INSERT INTO tank_players (lobby, user_key, name) SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM tank_players WHERE lobby = ?) < (SELECT max FROM tank_lobbies WHERE id = ? AND status = \'open\')'
+    )
+      .bind(id, key, row.name, id, id)
+      .run();
+    if (!seated.meta.changes) {
+      await giveMoney(env, key, lobby.stake);
+      throw new ApiError(409, 'full');
+    }
+    return tankSnapshot(env, await tankMine(env, key, now), key, now);
+  }
+
+  if (game === 'tank/leave') {
+    const mine = await tankMine(env, key, now);
+    if (!mine) return { lobby: null, balance: await balanceOf(env, key) };
+    if (mine.status === 'open') {
+      if (mine.owner_key === key) {
+        await tankCancel(env, mine, now);
+      } else {
+        const left = await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+        if (left.meta.changes) await giveMoney(env, key, mine.stake);
+      }
+    } else if (mine.status === 'playing') {
+      await tankMutate(env, mine.id, now, (state) => {
+        const seat = state.players.findIndex((player) => player.key === key);
+        tankForfeit(state, seat);
+      });
+      await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+    } else {
+      await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+    }
+    return { lobby: null, balance: await balanceOf(env, key) };
+  }
+
+  const mine = await tankMine(env, key, now);
+  if (!mine) throw new ApiError(409, 'no-lobby');
+
+  if (game === 'tank/start') {
+    if (mine.status !== 'open') throw new ApiError(409, 'started');
+    if (mine.owner_key !== key) throw new ApiError(403, 'forbidden');
+    const players = await tankPlayersOf(env, mine.id);
+    if (players.length < 2) throw new ApiError(409, 'few-players');
+    const state = tankStart(players.map((player) => ({ key: player.user_key, name: player.name })), mine.map, mine.stake, now);
+    const started = await env.DB.prepare('UPDATE tank_lobbies SET status = \'playing\', state = ?, rev = rev + 1 WHERE id = ? AND status = \'open\'').bind(JSON.stringify(state), mine.id).run();
+    if (!started.meta.changes) throw new ApiError(409, 'started');
+    await env.DB.prepare('DELETE FROM tank_inputs WHERE lobby = ?').bind(mine.id).run();
+    return tankSnapshot(env, mine, key, now);
+  }
+
+  if (game === 'tank/input') {
+    if (mine.status === 'playing') {
+      const move = isDir(body.move) ? body.move : null;
+      const fire = isDir(body.fire) ? body.fire : null;
+      if (move || fire) {
+        await env.DB.prepare(
+          'INSERT INTO tank_inputs (lobby, user_key, t, move, fire) VALUES (?, ?, ?, ?, ?) ON CONFLICT (lobby, user_key) DO UPDATE SET t = excluded.t, move = excluded.move, fire = excluded.fire'
+        )
+          .bind(mine.id, key, now, move, fire)
+          .run();
+      }
+      await tankSettle(env, mine, now);
+    }
+    return tankSnapshot(env, await tankMine(env, key, now), key, now);
+  }
+
+  throw new ApiError(404, 'not-found');
+}
+
 /** Market editor (level MARKET_ADMIN_LEVEL and up): news shocks, price levels, volatility, new and removed companies. */
 async function editMarket(env, row, body, now) {
   const op = String(body.op ?? '');
@@ -1183,6 +1740,23 @@ async function economyRoute(path, method, request, env, row) {
     return editMarket(env, row, await readBody(request), now);
   }
 
+  if (path === '/api/wallet/send' && method === 'POST') {
+    const body = await readBody(request);
+    const key = userKey(String(body.to ?? ''));
+    const target = key ? await env.DB.prepare('SELECT key, name FROM users WHERE key = ?').bind(key).first() : null;
+    if (!target) throw new ApiError(404, 'not-found');
+    if (target.key === row.key) throw new ApiError(403, 'self');
+    const amount = Math.floor(Number(body.amount));
+    if (!Number.isFinite(amount) || amount < 1 || amount > 1000000) throw new ApiError(400, 'bad-amount');
+    const note = String(body.note ?? '').trim().slice(0, 200);
+    await balanceOf(env, row.key);
+    await balanceOf(env, target.key);
+    await takeMoney(env, row.key, amount);
+    await giveMoney(env, target.key, amount);
+    await deliver(env, target.key, row.name, `Перевод ${amount} КЕ`, `${row.name} перевёл(а) вам ${amount} КЕ (крипто-енды).${note ? `\n\n${note}` : ''}`);
+    return { sent: { to: target.name, amount }, balance: await balanceOf(env, row.key) };
+  }
+
   if (path === '/api/wallet/dole' && method === 'POST') {
     const balance = await balanceOf(env, row.key);
     if (balance >= DOLE_LIMIT) throw new ApiError(409, 'no-dole');
@@ -1253,6 +1827,7 @@ async function economyRoute(path, method, request, env, row) {
   }
 
   if (game.startsWith('liar/')) return liarRoute(game, env, row, body, now);
+  if (game.startsWith('tank/')) return tankRoute(game, env, row, body, now);
 
   if (game === 'crash/state') return crashState(env, row, now);
 

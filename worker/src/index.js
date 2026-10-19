@@ -6,6 +6,7 @@
 
 import { ACTIONS, ADMIN_LEVEL, MARKET_ADMIN_LEVEL, MAX_LEVEL } from './config.js';
 import { liarCall, liarForfeit, liarPlay, liarStart, liarTimeout, liarView } from './liar.js';
+import { TANK_MAPS, isDir, tankAdvance, tankForfeit, tankStart, tankView } from './tanks.js';
 import {
   ASSETS,
   DOLE_COOLDOWN,
@@ -315,6 +316,11 @@ async function ensureEconomy(env) {
     env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS liar_lobbies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, stake INTEGER NOT NULL, max INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, rev INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT \'{}\')'
     ),
+    env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS tank_lobbies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, stake INTEGER NOT NULL, max INTEGER NOT NULL, map TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, rev INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT \'{}\')'
+    ),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS tank_players (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (lobby, user_key))'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS tank_inputs (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, t INTEGER NOT NULL, move TEXT, fire TEXT, PRIMARY KEY (lobby, user_key))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS liar_players (lobby INTEGER NOT NULL, user_key TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (lobby, user_key))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS crash_rounds (id INTEGER PRIMARY KEY AUTOINCREMENT, bet_until INTEGER NOT NULL, start INTEGER NOT NULL, crash REAL NOT NULL)'),
     env.DB.prepare(
@@ -410,7 +416,8 @@ async function wipeEconomy(env, key) {
       env.DB.prepare('DELETE FROM wallets WHERE user_key = ?').bind(key),
       env.DB.prepare('DELETE FROM holdings WHERE user_key = ?').bind(key),
       env.DB.prepare('DELETE FROM crash_bets WHERE user_key = ?').bind(key),
-      env.DB.prepare('DELETE FROM liar_players WHERE user_key = ?').bind(key)
+      env.DB.prepare('DELETE FROM liar_players WHERE user_key = ?').bind(key),
+      env.DB.prepare('DELETE FROM tank_players WHERE user_key = ?').bind(key)
     ]);
   } catch {
     // the economy was never used
@@ -672,6 +679,221 @@ async function liarRoute(game, env, row, body, now) {
   throw new ApiError(404, 'not-found');
 }
 
+/* ---------- «Танчики»: lobbies, stakes and the battle ---------- */
+
+const TANK_OPEN_MS = 20 * 60 * 1000;
+const TANK_RESULT_MS = 120 * 1000;
+
+async function tankPlayersOf(env, id) {
+  const { results } = await env.DB.prepare('SELECT user_key, name FROM tank_players WHERE lobby = ? ORDER BY rowid').bind(id).all();
+  return results;
+}
+
+async function tankMine(env, key, now) {
+  await ensureEconomy(env);
+  return env.DB.prepare(
+    'SELECT l.* FROM tank_lobbies l JOIN tank_players p ON p.lobby = l.id WHERE p.user_key = ? AND (l.status IN (\'open\', \'playing\') OR (l.status = \'done\' AND l.ended > ?)) ORDER BY l.id DESC LIMIT 1'
+  )
+    .bind(key, now - TANK_RESULT_MS)
+    .first();
+}
+
+async function tankCancel(env, lobby, now) {
+  const closed = await env.DB.prepare('UPDATE tank_lobbies SET status = \'closed\', ended = ? WHERE id = ? AND status = \'open\'').bind(now, lobby.id).run();
+  if (!closed.meta.changes) return;
+  for (const player of await tankPlayersOf(env, lobby.id)) await giveMoney(env, player.user_key, lobby.stake);
+  await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ?').bind(lobby.id).run();
+}
+
+// the pot goes to the winner, or is shared by tanks that finished equal; a remainder smaller than a share is burnt
+async function tankPayout(env, state) {
+  if (!state.winners.length) return;
+  const share = Math.floor(state.pot / state.winners.length);
+  for (const seat of state.winners) await giveMoney(env, state.players[seat].key, share);
+}
+
+async function tankMutate(env, id, now, change) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const row = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ?').bind(id).first();
+    if (!row || row.status !== 'playing') return null;
+    const state = JSON.parse(row.state);
+    let changed;
+    try {
+      changed = change(state, row);
+    } catch (error) {
+      throw liarFail(error);
+    }
+    if (changed === false) return { row, state };
+    const done = state.over;
+    const saved = await env.DB.prepare('UPDATE tank_lobbies SET state = ?, rev = rev + 1, status = ?, ended = ? WHERE id = ? AND rev = ?')
+      .bind(JSON.stringify(state), done ? 'done' : 'playing', done ? now : 0, id, row.rev)
+      .run();
+    if (saved.meta.changes) {
+      if (done) await tankPayout(env, state);
+      return { row: { ...row, status: done ? 'done' : 'playing' }, state };
+    }
+  }
+  return null; // somebody else advanced the battle at the same moment: that is fine
+}
+
+// runs the ticks that are due, with the newest wishes of the players
+async function tankSettle(env, row, now) {
+  if (row.status !== 'playing') return;
+  const state = JSON.parse(row.state);
+  if (now < state.nextTick) return;
+  const { results } = await env.DB.prepare('SELECT user_key, t, move, fire FROM tank_inputs WHERE lobby = ?').bind(row.id).all();
+  await tankMutate(env, row.id, now, (current) => {
+    const inputs = results
+      .map((item) => ({ seat: current.players.findIndex((player) => player.key === item.user_key), t: item.t, move: item.move, fire: item.fire }))
+      .filter((item) => item.seat >= 0);
+    return tankAdvance(current, now, inputs);
+  });
+}
+
+async function tankSnapshot(env, row, key, now) {
+  const balance = await balanceOf(env, key);
+  if (!row) return { lobby: null, balance };
+  const fresh = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ?').bind(row.id).first();
+  if (fresh.status === 'open') {
+    const players = await tankPlayersOf(env, fresh.id);
+    return {
+      balance,
+      lobby: {
+        id: fresh.id,
+        status: 'open',
+        stake: fresh.stake,
+        max: fresh.max,
+        map: fresh.map,
+        mapName: TANK_MAPS[fresh.map]?.name ?? fresh.map,
+        owner: fresh.owner_name,
+        mine: fresh.owner_key === key,
+        players: players.map((player) => ({ name: player.name, me: player.user_key === key })),
+        now
+      }
+    };
+  }
+  return { balance, lobby: { id: fresh.id, status: fresh.status, max: fresh.max, owner: fresh.owner_name, ...tankView(JSON.parse(fresh.state), key, now) } };
+}
+
+async function tankRoute(game, env, row, body, now) {
+  const key = row.key;
+
+  if (game === 'tank/list') {
+    const { results: stale } = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE status = \'open\' AND created < ?').bind(now - TANK_OPEN_MS).all();
+    for (const lobby of stale) await tankCancel(env, lobby, now);
+    const { results: open } = await env.DB.prepare('SELECT id, owner_name, stake, max, map FROM tank_lobbies WHERE status = \'open\' ORDER BY id DESC LIMIT 20').all();
+    const lobbies = [];
+    for (const lobby of open) {
+      lobbies.push({ id: lobby.id, owner: lobby.owner_name, stake: lobby.stake, max: lobby.max, mapName: TANK_MAPS[lobby.map]?.name ?? lobby.map, players: (await tankPlayersOf(env, lobby.id)).map((player) => player.name) });
+    }
+    const mine = await tankMine(env, key, now);
+    return { lobbies, maps: Object.entries(TANK_MAPS).map(([id, map]) => ({ id, name: map.name })), mine: mine ? mine.id : null, balance: await balanceOf(env, key) };
+  }
+
+  if (game === 'tank/state') {
+    let mine = await tankMine(env, key, now);
+    if (mine) {
+      await tankSettle(env, mine, now);
+      mine = await tankMine(env, key, now);
+    }
+    return tankSnapshot(env, mine, key, now);
+  }
+
+  if (game === 'tank/create') {
+    const stake = Math.floor(Number(body.stake));
+    const max = Math.floor(Number(body.max ?? 4));
+    const map = String(body.map ?? 'yard');
+    if (!Number.isFinite(stake) || stake < 10 || stake > MAX_BET || !(max >= 2 && max <= 4) || !TANK_MAPS[map]) throw new ApiError(400, 'bad-bet');
+    await balanceOf(env, key);
+    const active = await tankMine(env, key, now);
+    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
+    await takeMoney(env, key, stake);
+    const created = await env.DB.prepare('INSERT INTO tank_lobbies (owner_key, owner_name, stake, max, map, status, created) VALUES (?, ?, ?, ?, ?, \'open\', ?)').bind(key, row.name, stake, max, map, now).run();
+    if (!created.meta.changes) {
+      await giveMoney(env, key, stake);
+      throw new ApiError(500, 'server');
+    }
+    const lobby = await env.DB.prepare('SELECT id FROM tank_lobbies WHERE owner_key = ? ORDER BY id DESC LIMIT 1').bind(key).first();
+    await env.DB.prepare('INSERT INTO tank_players (lobby, user_key, name) VALUES (?, ?, ?)').bind(lobby.id, key, row.name).run();
+    return tankSnapshot(env, await tankMine(env, key, now), key, now);
+  }
+
+  if (game === 'tank/join') {
+    const id = Math.floor(Number(body.id));
+    const lobby = await env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ? AND status = \'open\'').bind(id).first();
+    if (!lobby) throw new ApiError(404, 'no-lobby');
+    await balanceOf(env, key);
+    const active = await tankMine(env, key, now);
+    if (active && active.status !== 'done') throw new ApiError(409, 'in-lobby');
+    await takeMoney(env, key, lobby.stake);
+    const seated = await env.DB.prepare(
+      'INSERT INTO tank_players (lobby, user_key, name) SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM tank_players WHERE lobby = ?) < (SELECT max FROM tank_lobbies WHERE id = ? AND status = \'open\')'
+    )
+      .bind(id, key, row.name, id, id)
+      .run();
+    if (!seated.meta.changes) {
+      await giveMoney(env, key, lobby.stake);
+      throw new ApiError(409, 'full');
+    }
+    return tankSnapshot(env, await tankMine(env, key, now), key, now);
+  }
+
+  if (game === 'tank/leave') {
+    const mine = await tankMine(env, key, now);
+    if (!mine) return { lobby: null, balance: await balanceOf(env, key) };
+    if (mine.status === 'open') {
+      if (mine.owner_key === key) {
+        await tankCancel(env, mine, now);
+      } else {
+        const left = await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+        if (left.meta.changes) await giveMoney(env, key, mine.stake);
+      }
+    } else if (mine.status === 'playing') {
+      await tankMutate(env, mine.id, now, (state) => {
+        const seat = state.players.findIndex((player) => player.key === key);
+        tankForfeit(state, seat);
+      });
+      await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+    } else {
+      await env.DB.prepare('DELETE FROM tank_players WHERE lobby = ? AND user_key = ?').bind(mine.id, key).run();
+    }
+    return { lobby: null, balance: await balanceOf(env, key) };
+  }
+
+  const mine = await tankMine(env, key, now);
+  if (!mine) throw new ApiError(409, 'no-lobby');
+
+  if (game === 'tank/start') {
+    if (mine.status !== 'open') throw new ApiError(409, 'started');
+    if (mine.owner_key !== key) throw new ApiError(403, 'forbidden');
+    const players = await tankPlayersOf(env, mine.id);
+    if (players.length < 2) throw new ApiError(409, 'few-players');
+    const state = tankStart(players.map((player) => ({ key: player.user_key, name: player.name })), mine.map, mine.stake, now);
+    const started = await env.DB.prepare('UPDATE tank_lobbies SET status = \'playing\', state = ?, rev = rev + 1 WHERE id = ? AND status = \'open\'').bind(JSON.stringify(state), mine.id).run();
+    if (!started.meta.changes) throw new ApiError(409, 'started');
+    await env.DB.prepare('DELETE FROM tank_inputs WHERE lobby = ?').bind(mine.id).run();
+    return tankSnapshot(env, mine, key, now);
+  }
+
+  if (game === 'tank/input') {
+    if (mine.status === 'playing') {
+      const move = isDir(body.move) ? body.move : null;
+      const fire = isDir(body.fire) ? body.fire : null;
+      if (move || fire) {
+        await env.DB.prepare(
+          'INSERT INTO tank_inputs (lobby, user_key, t, move, fire) VALUES (?, ?, ?, ?, ?) ON CONFLICT (lobby, user_key) DO UPDATE SET t = excluded.t, move = excluded.move, fire = excluded.fire'
+        )
+          .bind(mine.id, key, now, move, fire)
+          .run();
+      }
+      await tankSettle(env, mine, now);
+    }
+    return tankSnapshot(env, await tankMine(env, key, now), key, now);
+  }
+
+  throw new ApiError(404, 'not-found');
+}
+
 /** Market editor (level MARKET_ADMIN_LEVEL and up): news shocks, price levels, volatility, new and removed companies. */
 async function editMarket(env, row, body, now) {
   const op = String(body.op ?? '');
@@ -806,6 +1028,23 @@ async function economyRoute(path, method, request, env, row) {
     return editMarket(env, row, await readBody(request), now);
   }
 
+  if (path === '/api/wallet/send' && method === 'POST') {
+    const body = await readBody(request);
+    const key = userKey(String(body.to ?? ''));
+    const target = key ? await env.DB.prepare('SELECT key, name FROM users WHERE key = ?').bind(key).first() : null;
+    if (!target) throw new ApiError(404, 'not-found');
+    if (target.key === row.key) throw new ApiError(403, 'self');
+    const amount = Math.floor(Number(body.amount));
+    if (!Number.isFinite(amount) || amount < 1 || amount > 1000000) throw new ApiError(400, 'bad-amount');
+    const note = String(body.note ?? '').trim().slice(0, 200);
+    await balanceOf(env, row.key);
+    await balanceOf(env, target.key);
+    await takeMoney(env, row.key, amount);
+    await giveMoney(env, target.key, amount);
+    await deliver(env, target.key, row.name, `Перевод ${amount} КЕ`, `${row.name} перевёл(а) вам ${amount} КЕ (крипто-енды).${note ? `\n\n${note}` : ''}`);
+    return { sent: { to: target.name, amount }, balance: await balanceOf(env, row.key) };
+  }
+
   if (path === '/api/wallet/dole' && method === 'POST') {
     const balance = await balanceOf(env, row.key);
     if (balance >= DOLE_LIMIT) throw new ApiError(409, 'no-dole');
@@ -876,6 +1115,7 @@ async function economyRoute(path, method, request, env, row) {
   }
 
   if (game.startsWith('liar/')) return liarRoute(game, env, row, body, now);
+  if (game.startsWith('tank/')) return tankRoute(game, env, row, body, now);
 
   if (game === 'crash/state') return crashState(env, row, now);
 

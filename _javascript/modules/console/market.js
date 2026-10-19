@@ -440,3 +440,17 @@ export function playMarket(shell) {
     void refresh();
   });
 }
+
+export async function sendMoney(shell, args) {
+  const [to, amount, ...note] = args;
+  if (!to || !amount) {
+    shell.println(c.grey('Использование: pay <имя> <сумма> [сообщение]  — перевод КЕ сотруднику, ему придёт письмо.'));
+    return;
+  }
+  const result = await shell.backend.call('POST', '/api/wallet/send', { to, amount: Number(amount), note: note.join(' ') });
+  if (result.error) {
+    shell.println(c.red(errorText(result.error)));
+    return;
+  }
+  shell.println(c.green(`Переведено ${money(result.sent.amount)} → ${result.sent.to}. Письмо о переводе отправлено. Баланс: ${money(result.balance)}.`));
+}
