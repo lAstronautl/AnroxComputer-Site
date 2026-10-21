@@ -31,3 +31,5 @@ assets/js/dist
 .DS_Store
 Thumbs.db
 .obsidian
+
+worker/.dev.vars

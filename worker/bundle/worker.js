@@ -1191,8 +1191,8 @@ async function startSession(env, row) {
 async function authenticate(request, env) {
   const header = request.headers.get('Authorization') ?? '';
   let token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-  // a browser cannot set headers on a WebSocket, so the socket carries the token in its address
-  if (!token && new URL(request.url).pathname === '/api/ws') token = new URL(request.url).searchParams.get('token') ?? '';
+  // a browser cannot set headers on a WebSocket, so the socket carries the token as its sub-protocol (not in the address, which gets logged)
+  if (!token && new URL(request.url).pathname === '/api/ws') token = request.headers.get('Sec-WebSocket-Protocol')?.split(',')[0].trim() ?? '';
   if (!token) throw new ApiError(401, 'unauthorized');
 
   const session = await env.DB.prepare('SELECT user_key, expires FROM sessions WHERE token_hash = ?')
@@ -1833,10 +1833,19 @@ export class ArenaRoom {
     this.ticks = 0;
   }
 
-  async load(id) {
+  // two first requests may arrive together: they share one load, so only one timer is ever started
+  load(id) {
+    this.loading ??= this.read(id);
+    return this.loading;
+  }
+
+  async read(id) {
     if (this.game) return !this.game.over;
     const row = await this.env.DB.prepare('SELECT * FROM tank_lobbies WHERE id = ?').bind(id).first();
-    if (!row || row.status !== 'playing') return false; // finished battles are served from D1
+    if (!row || row.status !== 'playing') {
+      this.loading = null; // nothing to run (yet): the next request looks again
+      return false; // finished battles are served from D1
+    }
     this.row = row;
     this.game = JSON.parse(row.state);
     this.arena = ARENAS[row.kind];
@@ -1866,15 +1875,19 @@ export class ArenaRoom {
   }
 
   async run() {
-    if (this.busy || !this.game || this.game.over) return;
+    if (this.busy || !this.game) return;
     const now = Date.now();
-    if (!this.arena.advance(this.game, now, [])) return;
-    this.ticks += 1;
-    this.broadcast(now);
     this.busy = true;
     try {
-      if (this.game.over) await this.finish(now);
-      else if (this.ticks % 8 === 0) await this.save();
+      if (!this.game.over) {
+        if (!this.arena.advance(this.game, now, [])) return;
+        this.ticks += 1;
+        this.broadcast(now);
+        if (!this.game.over && this.ticks % 4 === 0) await this.save();
+      }
+      if (this.game.over && !this.finished) await this.finish(now); // retried on the next tick if D1 failed
+    } catch (error) {
+      console.error(error);
     } finally {
       this.busy = false;
     }
@@ -1884,13 +1897,31 @@ export class ArenaRoom {
     await this.env.DB.prepare('UPDATE tank_lobbies SET state = ?, rev = rev + 1 WHERE id = ? AND status = \'playing\'').bind(JSON.stringify(this.game), this.row.id).run();
   }
 
-  async finish(now) {
-    clearInterval(this.timer);
-    this.timer = 0;
+  // the final write happens once even if the tick loop and a leaving player both get here; a failure is retried
+  finish(now) {
+    this.ending ??= this.settle(now).catch((error) => {
+      this.ending = null;
+      throw error;
+    });
+    return this.ending;
+  }
+
+  async settle(now) {
     const saved = await this.env.DB.prepare('UPDATE tank_lobbies SET state = ?, rev = rev + 1, status = \'done\', ended = ? WHERE id = ? AND status = \'playing\'')
       .bind(JSON.stringify(this.game), now, this.row.id)
       .run();
     if (saved.meta.changes) await tankPayout(this.env, this.game);
+    this.finished = true;
+    clearInterval(this.timer);
+    this.timer = 0;
+    for (const socket of this.sockets.keys()) {
+      try {
+        socket.close(1000, 'finished');
+      } catch {
+        // already gone
+      }
+    }
+    this.sockets.clear();
   }
 
   async fetch(request) {
@@ -1915,16 +1946,29 @@ export class ArenaRoom {
       server.addEventListener('close', drop);
       server.addEventListener('error', drop);
       server.send(JSON.stringify({ lobby: this.lobbyFor(key, Date.now()) }));
-      return new Response(null, { status: 101, webSocket: client });
+      // the browser asked for the session token as a sub-protocol: it has to be answered with the same value
+      const protocol = request.headers.get('Sec-WebSocket-Protocol');
+      return new Response(null, { status: 101, webSocket: client, ...(protocol ? { headers: { 'Sec-WebSocket-Protocol': protocol } } : {}) });
     }
 
     if (!live && !this.game) return Response.json({ lobby: null });
     const body = await request.json().catch(() => ({}));
     if (body.op === 'input') this.apply(key, body);
-    if (body.op === 'leave' && !this.game.over) {
-      this.arena.forfeit(this.game, this.game.players.findIndex((player) => player.key === key));
-      this.broadcast(Date.now());
-      if (this.game.over) await this.finish(Date.now());
+    if (body.op === 'leave') {
+      if (!this.game.over) {
+        this.arena.forfeit(this.game, this.game.players.findIndex((player) => player.key === key));
+        this.broadcast(Date.now());
+        if (this.game.over) await this.finish(Date.now());
+      }
+      for (const [socket, owner] of this.sockets) {
+        if (owner !== key) continue;
+        this.sockets.delete(socket);
+        try {
+          socket.close(1000, 'left');
+        } catch {
+          // already gone
+        }
+      }
     }
     return Response.json({ lobby: this.lobbyFor(key, Date.now()) });
   }
@@ -1932,8 +1976,14 @@ export class ArenaRoom {
 
 async function arenaCall(env, lobby, key, payload) {
   const stub = env.ARENA.get(env.ARENA.idFromName(`lobby-${lobby.id}`));
-  const response = await stub.fetch(`https://arena/?id=${lobby.id}`, { method: 'POST', headers: { 'x-arena-key': encodeURIComponent(key) }, body: JSON.stringify(payload) });
-  return response.json();
+  try {
+    const response = await stub.fetch(`https://arena/?id=${lobby.id}`, { method: 'POST', headers: { 'x-arena-key': encodeURIComponent(key) }, body: JSON.stringify(payload) });
+    if (!response.ok) throw new Error(`arena ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error(error); // the room is unreachable: the caller falls back to the D1 copy of the battle
+    return { lobby: null, failed: true };
+  }
 }
 
 async function socketRoute(request, env) {
@@ -1945,7 +1995,7 @@ async function socketRoute(request, env) {
   const mine = await tankMine(env, row.key, Date.now());
   if (!mine || mine.status !== 'playing' || mine.kind !== url.searchParams.get('game')) return new Response('no battle', { status: 409 });
   const stub = env.ARENA.get(env.ARENA.idFromName(`lobby-${mine.id}`));
-  return stub.fetch(`https://arena/?id=${mine.id}`, { headers: { Upgrade: 'websocket', 'x-arena-key': encodeURIComponent(row.key) } });
+  return stub.fetch(`https://arena/?id=${mine.id}`, { headers: { Upgrade: 'websocket', 'x-arena-key': encodeURIComponent(row.key), 'Sec-WebSocket-Protocol': request.headers.get('Sec-WebSocket-Protocol') ?? '' } });
 }
 
 async function tankRoute(game, env, row, body, now) {
@@ -2030,8 +2080,9 @@ async function tankRoute(game, env, row, body, now) {
         if (left.meta.changes) await giveMoney(env, key, mine.stake);
       }
     } else if (mine.status === 'playing') {
-      if (env.ARENA) await arenaCall(env, mine, key, { op: 'leave' });
-      else {
+      if (env.ARENA && !(await arenaCall(env, mine, key, { op: 'leave' })).failed) {
+        // the room has settled the forfeit
+      } else {
         await tankMutate(env, mine.id, now, (state) => {
           const seat = state.players.findIndex((player) => player.key === key);
           ARENAS[mine.kind].forfeit(state, seat);

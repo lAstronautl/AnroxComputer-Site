@@ -9,7 +9,9 @@ export function createLive(socket, game, onState) {
   let ws = null;
   let open = false;
   let failures = 0;
+  let retryAt = 0;
   let last = 0;
+  let openedAt = 0;
 
   return {
     /** True while the server is pushing fresh states. */
@@ -17,16 +19,17 @@ export function createLive(socket, game, onState) {
       return open && Date.now() - last < STALE_MS;
     },
     connect() {
-      if (ws || failures >= 3) return;
+      if (ws || Date.now() < retryAt) return;
       ws = socket(game);
       if (!ws) {
-        failures = 3;
+        retryAt = Infinity; // no sockets in this backend: polling for good
         return;
       }
       const mine = ws;
       mine.onopen = () => {
         open = true;
-        last = Date.now();
+        openedAt = Date.now();
+        last = openedAt;
       };
       mine.onmessage = (event) => {
         try {
@@ -40,7 +43,9 @@ export function createLive(socket, game, onState) {
         }
       };
       mine.onclose = () => {
-        if (!open) failures += 1;
+        // a failed or short-lived connection waits longer each time before the next try (1 s, 2 s, 4 s … 30 s)
+        failures = open && Date.now() - openedAt > 2000 ? 0 : failures + 1;
+        retryAt = Date.now() + Math.min(30000, 1000 * 2 ** Math.min(failures, 5));
         if (ws === mine) ws = null;
         open = false;
       };

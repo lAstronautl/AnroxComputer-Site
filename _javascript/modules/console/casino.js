@@ -720,7 +720,7 @@ export function playCasino(shell) {
       const { base, token } = shell.backend;
       if (!base || !token || typeof WebSocket === 'undefined') return null;
       try {
-        return new WebSocket(`${base.replace(/^http/, 'ws')}/api/ws?game=${game}&token=${encodeURIComponent(token)}`);
+        return new WebSocket(`${base.replace(/^http/, 'ws')}/api/ws?game=${game}`, token);
       } catch {
         return null;
       }

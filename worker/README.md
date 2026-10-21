@@ -123,7 +123,8 @@ npx wrangler d1 execute anroxcomputers --remote --command "DELETE FROM users WHE
 
 `npx wrangler dev` запускает API на `http://localhost:8787` (с локальной базой:
 `npx wrangler d1 execute anroxcomputers --local --file=schema.sql`). Для сайта на localhost
-в `wrangler.toml` включён `ALLOW_LOCALHOST`; в боевой версии его можно убрать.
+нужна переменная `ALLOW_LOCALHOST`. В боевой `wrangler.toml` её нет, поэтому для `wrangler dev` создайте файл
+`worker/.dev.vars` со строкой `ALLOW_LOCALHOST=true` (в репозиторий он не попадает).
 
 ## Рынок: уровень 999
 
